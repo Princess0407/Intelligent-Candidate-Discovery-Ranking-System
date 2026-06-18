@@ -88,6 +88,11 @@ _SYNTHETIC_TEMPLATES = [
     "eager to contribute to organizational goals",
     "team player with excellent interpersonal",
     "dynamic and motivated self-starter",
+    "mechanical engineering design role at a hardware-product company",
+    "customer support team lead at a saas product",
+    "marketing leadership role at a b2b saas company",
+    "brand design and creative direction at a consumer-products company",
+    "operations management role at a logistics company",
 ]
 
 _PRODUCTION_KEYWORDS = [
@@ -173,18 +178,24 @@ def domain_category_mismatch(career_entry: dict) -> float:
 def template_registry_match(description: str) -> float:
     """
     Adversarial Function 2: Template Registry.
-    String matching against 12 known synthetic templates.
+    String matching against known synthetic templates.
+    Fires if substring matches or SequenceMatcher ratio >= 0.65.
 
     Schema fields read:
       - career_history[].description
 
-    Returns: 1.0 if any template found, 0.0 otherwise.
+    Returns: 1.0 if any template matches, 0.0 otherwise.
     """
     if not description:
         return 0.0
     desc_lower = description.lower()
+    fragment = desc_lower[:200]
+    import difflib
     for template in _SYNTHETIC_TEMPLATES:
         if template in desc_lower:
+            return 1.0
+        ratio = difflib.SequenceMatcher(None, fragment, template, autojunk=False).ratio()
+        if ratio >= 0.65:
             return 1.0
     return 0.0
 
@@ -673,7 +684,8 @@ def compute_flag_title_chaser(candidate: dict) -> float:
     """
     Feature 16: flag_title_chaser.
     Detects candidates who adopt trendy AI titles with very short tenure.
-    Flag fires if most recent role has AI/ML title AND duration < 6 months.
+    Flag fires if most recent role has AI/ML title AND average tenure < 15 months
+    AND at least one role has duration < 12 months.
 
     Schema fields read:
       - career_history[].title
@@ -694,14 +706,23 @@ def compute_flag_title_chaser(candidate: dict) -> float:
     most_recent = current_roles[0] if current_roles else career[-1]
 
     title = (most_recent.get("title") or "").lower()
-    dur = most_recent.get("duration_months") or 0
-    try:
-        dur = max(0, int(dur))
-    except (TypeError, ValueError):
-        dur = 0
-
     is_trendy_title = any(kw in title for kw in _TRENDY_TITLES)
-    is_short_tenure = dur < 6
+
+    durations = []
+    for ch in career:
+        dur = ch.get("duration_months")
+        if dur is not None:
+            try:
+                dur = max(0, int(dur))
+                durations.append(dur)
+            except (TypeError, ValueError):
+                pass
+
+    if not durations:
+        return 0.0
+
+    avg_tenure = sum(durations) / len(durations)
+    is_short_tenure = (avg_tenure < 15.0) and any(d < 12 for d in durations)
 
     return 1.0 if (is_trendy_title and is_short_tenure) else 0.0
 

@@ -246,72 +246,151 @@ def _get_top_skills(candidate: dict, n: int = 3, jd_config=None) -> List[str]:
 
 
 
+SKILL_JD_PHRASES = {
+    frozenset(["faiss", "milvus", "qdrant", "weaviate", "pinecone", "opensearch", "elasticsearch", "chroma"]): 
+        "production vector search infrastructure ({matched})",
+    frozenset(["sentence transformers", "embeddings", "bge", "e5", "text embeddings", "dense retrieval"]): 
+        "embedding model depth for semantic search ({matched})",
+    frozenset(["bm25", "information retrieval", "tf-idf", "tfidf", "lucene", "sparse retrieval"]): 
+        "information retrieval foundation the JD centers on ({matched})",
+    frozenset(["fine-tuning llms", "lora", "qlora", "peft", "instruction tuning"]): 
+        "LLM fine-tuning experience (preferred by JD) ({matched})",
+    frozenset(["hugging face transformers", "transformers", "sentence transformers"]): 
+        "transformer model infrastructure ({matched})",
+    frozenset(["recommendation systems", "recommender systems", "collaborative filtering"]): 
+        "recommendation system background applicable to the role ({matched})",
+    frozenset(["mlops", "kubeflow", "weights & biases", "mlflow"]): 
+        "ML production operations experience ({matched})",
+}
+
+SKILL_COMBINED_PHRASES = {
+    frozenset(["faiss", "milvus", "qdrant", "weaviate", "pinecone", "opensearch", "elasticsearch", "chroma"]): 
+        "production vector search infrastructure",
+    frozenset(["sentence transformers", "embeddings", "bge", "e5", "text embeddings", "dense retrieval"]): 
+        "embedding model depth for semantic search",
+    frozenset(["bm25", "information retrieval", "tf-idf", "tfidf", "lucene", "sparse retrieval"]): 
+        "classical IR foundation",
+    frozenset(["fine-tuning llms", "lora", "qlora", "peft", "instruction tuning"]): 
+        "LLM fine-tuning experience",
+    frozenset(["hugging face transformers", "transformers", "sentence transformers"]): 
+        "transformer model infrastructure",
+    frozenset(["recommendation systems", "recommender systems", "collaborative filtering"]): 
+        "recommendation system background",
+    frozenset(["mlops", "kubeflow", "weights & biases", "mlflow"]): 
+        "ML production operations experience",
+}
+
+def get_specific_jd_match(candidate: dict, jd_config=None) -> str:
+    skills = candidate.get("skills", []) or []
+    candidate_skills = {}
+    for s in skills:
+        name = s.get("name")
+        if name:
+            candidate_skills[name.lower().strip()] = name
+
+    matched_categories = []
+    matched_skills = []
+    used_skills = set()
+
+    for keys in SKILL_JD_PHRASES.keys():
+        found_skill = None
+        for k in keys:
+            if k in candidate_skills and k not in used_skills:
+                found_skill = candidate_skills[k]
+                used_skills.add(k)
+                break
+        if found_skill:
+            matched_categories.append(keys)
+            matched_skills.append(found_skill)
+
+    if not matched_categories:
+        from jd_parser import hard_req_coverage_score
+        coverage = hard_req_coverage_score(candidate, jd_config)
+        hard_req_coverage_pct = coverage * 100
+        return f"covers {hard_req_coverage_pct:.0f}% of JD hard requirements"
+
+    if len(matched_categories) == 1:
+        return SKILL_JD_PHRASES[matched_categories[0]].format(matched=matched_skills[0])
+
+    skills_str = " + ".join(matched_skills)
+    phrases = [SKILL_COMBINED_PHRASES[cat] for cat in matched_categories]
+    if len(phrases) == 2:
+        phrases_str = f"{phrases[0]} alongside {phrases[1]}"
+    else:
+        phrases_str = ", ".join(phrases[:-1]) + f" alongside {phrases[-1]}"
+    return f"{skills_str} combination — {phrases_str}"
+
 def _get_severity_ranked_concern(
     feature_vector: Dict[str, float],
     candidate: dict,
 ) -> Optional[str]:
     """
-    Severity-Ranked Concerns (Section 7).
-    Sort gaps by multiplier impact. Surface ONLY the sharpest single concern.
-
-    Returns a concern string, or None if no significant concern.
+    Priority concern selection logic.
+    Evaluates in a strict order and returns the first matching concern.
     """
-    concerns = []
+    # Priority 1: Notice period > 90 days
+    notice_days = candidate.get("redrob_signals", {}).get("notice_period_days")
+    if notice_days is not None:
+        try:
+            notice_days_int = int(float(notice_days))
+            if notice_days_int > 90:
+                return f"Notice period of {notice_days_int} days is significantly above the JD's preferred sub-thirty threshold — confirm whether buyout is feasible before advancing"
+        except (TypeError, ValueError):
+            pass
 
-    fv = feature_vector
+    profile = candidate.get("profile", {}) or {}
+    location = profile.get("location") or "unknown location"
+    country = profile.get("country") or "unknown country"
+    is_india = country.lower().strip() in ["india", "in"]
+    willing_to_relocate = bool(candidate.get("redrob_signals", {}).get("willing_to_relocate", False))
 
-    # Check flags in order of severity impact
-    if fv.get("flag_consulting_only", 0) > 0.5:
-        concerns.append(
-            ("consulting_only", 0.9,
-             "entire career in IT Services/consulting — limited product-company depth")
-        )
-    if fv.get("flag_title_desc_mismatch", 0) > 0.5:
-        concerns.append(
-            ("title_mismatch", 0.8,
-             "job title and role description don't align — possible misrepresentation")
-        )
-    if fv.get("flag_langchain_dabbler", 0) > 0.5:
-        concerns.append(
-            ("langchain_only", 0.75,
-             "skills dominated by recent LLM-era tools with no pre-LLM IR foundation")
-        )
-    if fv.get("flag_cv_specialist", 0) > 0.5:
-        concerns.append(
-            ("cv_specialist", 0.7,
-             "profile dominated by computer vision/speech — not aligned with search/ranking JD")
-        )
-    if fv.get("flag_template_desc", 0) > 0.5:
-        concerns.append(
-            ("template_desc", 0.65,
-             "career descriptions match known synthetic templates")
-        )
-    if fv.get("Param_E_Credibility", 1.0) > 2.5:
-        cid = (candidate.get("candidate_id") or "")
-        concerns.append(
-            ("low_credibility", 0.6, _select_low_cred_variant(cid))
-        )
-    if fv.get("consistency_score", 1.0) < 0.5:
-        concerns.append(
-            ("consistency_violation", 0.85,
-             "data integrity check failed — profile contains logical inconsistencies")
-        )
+    # Priority 2: Outside India and unwilling to relocate
+    if not is_india and not willing_to_relocate:
+        return f"Based in {location}, {country} — outside the JD's India-only scope with no relocation willingness flagged. No visa sponsorship offered per JD"
 
-    if not concerns:
-        # Check if notice period is long
-        notice = candidate.get("redrob_signals", {}).get("notice_period_days") or 0
-        if notice > 90:
-            concerns.append(
-                ("long_notice", 0.3,
-                 f"notice period of {notice} days may delay joining timeline")
-            )
+    # Priority 3: Outside India but willing to relocate
+    if not is_india and willing_to_relocate:
+        return f"Based in {location}, {country} — outside the JD's India-only scope, but relocation willingness is flagged; confirm transition feasibility"
 
-    if not concerns:
-        return None
+    # Priority 4: In India but outside Noida/Pune
+    if is_india:
+        loc_lower = location.lower()
+        if "noida" not in loc_lower and "pune" not in loc_lower:
+            return f"Based in {location} — outside the Noida/Pune preference zone; confirm relocation willingness before shortlisting"
 
-    # Sort by severity descending, return only the top concern
-    concerns.sort(key=lambda x: x[1], reverse=True)
-    return concerns[0][2]
+    # Priority 5: Langchain dabbler
+    if feature_vector.get("flag_langchain_dabbler", 0.0) > 0.5:
+        return "AI skill profile is weighted toward LLM-era tools without evidence of pre-LLM IR or ML fundamentals — a specific JD disqualifier"
+
+    # Priority 6: Consulting only
+    if feature_vector.get("flag_consulting_only", 0.0) > 0.5:
+        return "Career is predominantly at IT-services/consulting firms — the JD explicitly prefers product-company background"
+
+    # Priority 7: Title-desc mismatch
+    if feature_vector.get("flag_title_desc_mismatch", 0.0) > 0.5:
+        return "Job title and role descriptions show significant domain mismatch across career history — verify directly with candidate"
+
+    # Priority 8: Skill assessment score < 50
+    assessments = candidate.get("redrob_signals", {}).get("skill_assessment_scores") or {}
+    if isinstance(assessments, dict):
+        assessed_keys = {k.lower().strip(): (k, v) for k, v in assessments.items()}
+        for s in candidate.get("skills", []) or []:
+            prof = (s.get("proficiency") or "").lower().strip()
+            name = (s.get("name") or "").lower().strip()
+            if prof == "advanced" and name in assessed_keys:
+                orig_name, score = assessed_keys[name]
+                try:
+                    score_val = float(score)
+                    if score_val < 50:
+                        return f"Claims advanced proficiency in {s.get('name')} but platform assessment score is {int(score_val)} out of one hundred — inconsistent with self-reported level"
+                except (TypeError, ValueError):
+                    pass
+
+    # Priority 9: Capped Param_E credibility >= 5.0
+    if feature_vector.get("Param_E_Credibility", 0.0) >= 5.0:
+        return "High ratio of advanced skill claims relative to platform-verified assessment data on file"
+
+    return None
 
 
 class ReasoningCompiler:
@@ -332,6 +411,7 @@ class ReasoningCompiler:
         self._opening_rotation: Dict[str, int] = {
             tone: 0 for tone in _OPENING_BY_TONE
         }
+        self._last_template_idx: Optional[int] = None
 
     def _score_to_percentile(self, score: float) -> float:
         """Convert a score to its percentile in the local distribution."""
@@ -349,64 +429,43 @@ class ReasoningCompiler:
         rank: int,
     ) -> str:
         """
-        Generate reasoning text for a single candidate.
-
-        Args:
-            candidate: Raw candidate dict.
-            feature_vector: 22-feature vector dict.
-            lgbm_score: LightGBM predicted score.
-            rank: 1-indexed rank in final output.
-
-        Returns:
-            Reasoning string (non-empty, fact-grounded, audited).
+        Generate reasoning text for a candidate using one of 4 distinct templates.
         """
-        percentile = self._score_to_percentile(lgbm_score)
-        tone = _get_tone(percentile)
+        # MD5-based deterministic hashing for template selection to stay byte-identical
+        stable_hash = int(
+            hashlib.md5(candidate.get("candidate_id", "").encode("utf-8", errors="ignore")).hexdigest()[:8], 16
+        )
+        template_idx = stable_hash % 4
+
+        # Enforce that no two consecutive reasoning strings share the same template index
+        if self._last_template_idx is not None and template_idx == self._last_template_idx:
+            template_idx = (template_idx + 1) % 4
+        self._last_template_idx = template_idx
 
         # Extract grounding facts from the actual candidate data
-        hard_matches = _get_hard_req_matches(candidate, self.jd_config)
-        top_skills = _get_top_skills(candidate, n=3, jd_config=self.jd_config)
+        jd_match = get_specific_jd_match(candidate, self.jd_config)
         location = candidate.get("profile", {}).get("location") or "unknown location"
         concern = _get_severity_ranked_concern(feature_vector, candidate)
 
         # Pull raw numeric values directly from the JSON to guarantee audit consistency.
-        # We use the raw stored value (not int()-truncated) so the numeric regex audit
-        # always finds the exact token in the candidate's JSON string.
         _profile = candidate.get("profile") or {}
         _signals = candidate.get("redrob_signals") or {}
 
         yoe_raw = _profile.get("years_of_experience")
-        # yoe_str: emit only if a positive numeric; use int representation only when
-        # the value is already an exact integer to avoid 7.5 -> "7" mismatch.
-        yoe_str: Optional[str] = None
+        yoe_str = "0"
         if yoe_raw is not None:
             try:
                 yoe_float = float(yoe_raw)
                 if yoe_float > 0:
-                    # Emit as integer only if lossless; otherwise emit the raw string
-                    # as stored so the numeric audit can find it verbatim.
                     if yoe_float == int(yoe_float):
                         yoe_str = str(int(yoe_float))
                     else:
-                        yoe_str = str(yoe_raw)  # e.g. "7.5"
-            except (TypeError, ValueError):
-                pass
-
-        github_raw = _signals.get("github_activity_score")
-        github_str: Optional[str] = None
-        if github_raw is not None:
-            try:
-                github_float = float(github_raw)
-                if github_float >= 0:
-                    if github_float == int(github_float):
-                        github_str = str(int(github_float))
-                    else:
-                        github_str = str(github_raw)
+                        yoe_str = str(yoe_raw)
             except (TypeError, ValueError):
                 pass
 
         notice_raw = _signals.get("notice_period_days")
-        notice_str: Optional[str] = None
+        notice_str = "0"
         if notice_raw is not None:
             try:
                 notice_int = int(float(notice_raw))
@@ -414,64 +473,100 @@ class ReasoningCompiler:
             except (TypeError, ValueError):
                 pass
 
-        # Build opening sentence with rotation to avoid n-gram collision
-        openings = _OPENING_BY_TONE[tone]
-        idx = self._opening_rotation[tone] % len(openings)
-        opening = openings[idx]
-        self._opening_rotation[tone] += 1
+        # Build reasoning based on selected template index
+        if template_idx == 0:
+            if concern:
+                reasoning = (
+                    f"The candidate's profile demonstrates {jd_match}. "
+                    f"With {yoe_str} years of experience, the candidate is based in {location} "
+                    f"and is available in {notice_str} days. Primary concern: {concern}."
+                )
+            else:
+                reasoning = (
+                    f"The candidate's profile demonstrates {jd_match}. "
+                    f"With {yoe_str} years of experience, the candidate is based in {location} "
+                    f"and is available in {notice_str} days."
+                )
 
-        # Build the reasoning in parts
-        parts = []
+        elif template_idx == 1:
+            if concern:
+                reasoning = (
+                    f"With {yoe_str} years of experience, the candidate is currently based in {location}. "
+                    f"The profile demonstrates strong JD alignment, showing {jd_match}. "
+                    f"Available in {notice_str} days, the primary concern is: {concern}."
+                )
+            else:
+                reasoning = (
+                    f"With {yoe_str} years of experience, the candidate is currently based in {location}. "
+                    f"The profile demonstrates strong JD alignment, showing {jd_match}. "
+                    f"The candidate is available in {notice_str} days."
+                )
 
-        # Opening with JD requirement names
-        if hard_matches:
-            req_names = ", ".join(hard_matches[:2]).replace("_", " ")
-            parts.append(f"{opening} {req_names}.")
-        else:
-            parts.append(f"{opening} general technical background.")
+        elif template_idx == 2:
+            if concern:
+                reasoning = (
+                    f"The primary concern for this profile is {concern}. "
+                    f"Despite this, the technical profile shows {jd_match}. "
+                    f"The candidate has {yoe_str} years of experience, is based in {location}, "
+                    f"and is available in {notice_str} days."
+                )
+            else:
+                reasoning = (
+                    f"The technical profile shows {jd_match}. "
+                    f"The candidate has {yoe_str} years of experience, is based in {location}, "
+                    f"and is available in {notice_str} days."
+                )
 
-        # Specific facts (skills, YoE, location) — only use values from the actual data
-        skill_str = ", ".join(top_skills) if top_skills else "limited skill signal"
-        if yoe_str is not None:
-            parts.append(
-                f"Top skills by tenure: {skill_str}. "
-                f"{yoe_str} years of experience, based in {location}."
-            )
-        else:
-            parts.append(f"Top skills: {skill_str}.")
+        else: # template_idx == 3
+            # Determine verifiable point
+            github_raw = _signals.get("github_activity_score")
+            verifiable_point = "strong technical skills"
+            if github_raw is not None:
+                try:
+                    github_float = float(github_raw)
+                    if github_float > 30:
+                        github_score_str = str(int(github_float)) if github_float == int(github_float) else str(github_raw)
+                        verifiable_point = f"a strong GitHub activity score of {github_score_str}"
+                except (TypeError, ValueError):
+                    pass
 
-        # GitHub signal (only mention if it exists and is non-negative)
-        if github_str is not None:
-            parts.append(f"GitHub activity score: {github_str}.")
+            if verifiable_point == "strong technical skills":
+                assessments = _signals.get("skill_assessment_scores") or {}
+                verified_skill = None
+                verified_score = None
+                if isinstance(assessments, dict) and assessments:
+                    for k, v in assessments.items():
+                        try:
+                            score_val = float(v)
+                            if score_val >= 0:
+                                verified_skill = k
+                                verified_score = str(int(score_val)) if score_val == int(score_val) else str(v)
+                                break
+                        except (TypeError, ValueError):
+                            pass
+                if verified_skill:
+                    verifiable_point = f"a verified platform assessment score of {verified_score}/100 in {verified_skill}"
 
-        # Notice period (only mention the actual value)
-        if notice_str is not None:
-            parts.append(f"Available in {notice_str} days.")
+            if verifiable_point == "strong technical skills":
+                prod_log = feature_vector.get("prod_signal_log", 0.0)
+                if prod_log > 0:
+                    verifiable_point = "proven production engineering credentials in career history descriptions"
 
-        # Hard requirement coverage — text-only labels (no numbers)
-        # Numbers like 4 or 5 won't be in the candidate JSON → numeric audit would flag them
-        coverage = feature_vector.get("hard_req_coverage", 0.0)
-        if coverage >= 0.8:
-            cov_label = "high (most hard requirements matched)"
-        elif coverage >= 0.6:
-            cov_label = "moderate (majority of hard requirements matched)"
-        elif coverage >= 0.4:
-            cov_label = "partial (some hard requirements matched)"
-        elif coverage > 0:
-            cov_label = "low (minimal hard requirement match)"
-        else:
-            cov_label = "none (no hard requirements matched)"
-        parts.append(f"Hard requirement coverage: {cov_label}.")
-
-        # Single sharpest concern
-        if concern:
-            parts.append(f"Primary concern: {concern}.")
+            if concern:
+                reasoning = (
+                    f"Backed by {verifiable_point}, the profile features {jd_match}. "
+                    f"Based in {location}, the candidate has {yoe_str} years of experience "
+                    f"and is available in {notice_str} days. Primary concern: {concern}."
+                )
+            else:
+                reasoning = (
+                    f"Backed by {verifiable_point}, the profile features {jd_match}. "
+                    f"Based in {location}, the candidate has {yoe_str} years of experience "
+                    f"and is available in {notice_str} days."
+                )
 
         # Assemble candidate numbers set for audit
         candidate_numbers = _extract_candidate_numbers(candidate)
-
-        # Try to assemble text; if audit fails, strip the offending numbers
-        reasoning = " ".join(parts)
 
         # Numeric audit — with the raw-value extraction above, violations should be
         # zero. This is a safety net only; if a violation still fires, omit the
@@ -479,8 +574,6 @@ class ReasoningCompiler:
         audit_passed, violations = _numeric_regex_audit(reasoning, candidate_numbers)
         if not audit_passed:
             for v in violations:
-                # Replace "<number> years" → "several years", "score: <n>" → omit that clause
-                # Generic fallback: remove the offending token and a trailing period/space.
                 reasoning = re.sub(
                     r'\b' + re.escape(v) + r'\b\.?',
                     '',
@@ -490,6 +583,9 @@ class ReasoningCompiler:
             reasoning = re.sub(r'  +', ' ', reasoning)
             # Strip any residual bracket artefacts (belt-and-suspenders)
             reasoning = re.sub(r'\[N\]', '', reasoning).strip()
+
+        # Clean double periods or extra trailing periods
+        reasoning = reasoning.replace("..", ".").replace(" .", ".").strip()
 
         # N-gram collision check
         collision_ok, sim = _ngram_collision_check(reasoning, self._generated_texts)
