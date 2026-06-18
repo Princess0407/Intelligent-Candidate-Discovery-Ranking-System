@@ -94,15 +94,23 @@ def main():
     # Fetch rank 1 candidate
     r1_cand = sample_candidates[0]
     import copy
-    near_zero_c = copy.deepcopy(r1_cand)
-    near_zero_c["redrob_signals"]["connection_count"] = 1
-    near_zero_c["redrob_signals"]["search_appearance_30d"] = 0
-    near_zero_c["redrob_signals"]["endorsements_received"] = 0
     
-    # We verify that c5 returns 0.0 for high BM25 zero/near-zero engagement
-    c5_val = c5_engagement_mismatch(near_zero_c, bm25_score=60.0, median_bm25=50.0)
-    c5_pass = (c5_val == 0.0)
-    c5_details = "Fired on connections=1" if c5_pass else "Failed to fire on connections=1"
+    # Test case 1: Just inside the threshold (connections=60, appearances=15, endorsements=4)
+    inside_c = copy.deepcopy(r1_cand)
+    inside_c["redrob_signals"]["connection_count"] = 60
+    inside_c["redrob_signals"]["search_appearance_30d"] = 15
+    inside_c["redrob_signals"]["endorsements_received"] = 4
+    c5_inside = c5_engagement_mismatch(inside_c, bm25_score=60.0, median_bm25=50.0)
+    
+    # Test case 2: Just outside the threshold (connections=61, appearances=15, endorsements=4)
+    outside_c = copy.deepcopy(r1_cand)
+    outside_c["redrob_signals"]["connection_count"] = 61
+    outside_c["redrob_signals"]["search_appearance_30d"] = 15
+    outside_c["redrob_signals"]["endorsements_received"] = 4
+    c5_outside = c5_engagement_mismatch(outside_c, bm25_score=60.0, median_bm25=50.0)
+    
+    c5_pass = (c5_inside == 0.0) and (c5_outside == 1.0)
+    c5_details = f"Fired on boundary inside (60/15/4 -> {c5_inside:.1f}) and passed outside (61/15/4 -> {c5_outside:.1f})"
     print(f"c5 Boundary Test: {'PASS' if c5_pass else 'FAIL'} ({c5_details})")
 
     # 4. Probe-set NDCG@10 check
