@@ -1,0 +1,50 @@
+team:
+  name: "Redrob Ranker"
+  members:
+    - name: "Pranj"
+      role: "Lead Developer"
+    - name: "Priyanka Tiwari"
+      role: "Architecture and System Design"
+
+submission:
+  version: "1.0.0"
+  timestamp: "2026-06-18"
+  output_file: "submission.csv"
+
+system:
+  pipeline_type: "Offline-Indexed Lexical Retrieval + LightGBM LambdaRank"
+  hardware: "CPU-only, ≤16GB RAM"
+  runtime_seconds: 20
+  network_calls_during_ranking: 0
+
+methodology_summary: |
+  This system uses a deterministic, CPU-only pipeline optimized for NDCG@10 and P@5.
+
+  Stage 1 (Retrieval): A precomputed BM25Okapi index is queried via dual-pass: Pass A expands
+  JD requirements using a 183-alias taxonomy (skill_aliases.json), Pass B targets production-context
+  keywords (deployed, scale, serving, latency). A rare-term safety net retrieves candidates with
+  niche skills (pinecone, lambdarank) that might otherwise be missed. This produces a top-5000
+  candidate pool in ~9 seconds.
+
+  Stage 2 (Features): A 22-feature schema-grounded matrix extracts signals from every candidate
+  record. Includes 5 adversarial detection functions: domain-category mismatch, synthetic template
+  detection, production signal log-compression, LangChain dabbler detection, and CV/speech specialist
+  detection. Stage 3 adds a consistency composite (c1×c2×c3×c4×c5) that zeros out scores for
+  timeline impossibilities, signup anomalies, salary inversions, assessment contradictions, and
+  engagement mismatches.
+
+  Stage 4 (Ranking): LightGBM with objective=lambdarank trains on weak labels computed as
+  hard_req_coverage × consistency_score — explicitly excluding bm25_score to break circularity.
+  The model then discovers organic feature interactions using all 22 features including bm25_score.
+
+  Stage 5 (Reasoning): Deterministic grammar engine generates fact-grounded reasoning with numeric
+  regex audit (all cited numbers must exist in the candidate JSON) and n-gram collision avoidance
+  (difflib.SequenceMatcher). Pre-submission blocking audits enforce diversity (max 25% archetype
+  concentration, max 30% employer concentration) and honeypot detection.
+
+ai_tools_used:
+  - tool: "Google DeepMind Antigravity (Claude Sonnet 4.6)"
+    usage: "Code scaffolding, module structure, debugging LightGBM query size limit"
+    human_review: true
+
+reference_date: "2026-01-01"

@@ -1,0 +1,38 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDEs and editor configs
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+
+# Large datasets and project outputs
+candidates.jsonl
+*.jsonl
+submission.csv
+reasoning_trace.jsonl
+logs/
+*.log
+
+# Precomputed files (ignore huge intermediate indices, keep the trained models)
+precomputed/*
+!precomputed/lgbm_model.txt
+!precomputed/lgbm_model.pkl

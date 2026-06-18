@@ -1,0 +1,165 @@
+{
+  "_comment": "Maps canonical JD requirement concepts to candidate skill name variants for BM25 Stage-1 query expansion. For each JD term, all aliases are added to the BM25 query at index time and query time. type: hard_requirement = 3x scoring weight; preferred = 1x; negative = penalised if primary skill.",
+
+  "jd_requirements": {
+
+    "embeddings_retrieval": {
+      "type": "hard_requirement",
+      "description": "Production experience with embedding-based retrieval systems",
+      "aliases": [
+        "embeddings", "text embeddings", "vector embeddings", "sentence embeddings",
+        "dense retrieval", "semantic search", "semantic similarity",
+        "sentence transformers", "sentence-transformers",
+        "bge", "e5", "all-minilm", "mpnet", "gte",
+        "openai embeddings", "ada embeddings",
+        "embedding models", "representation learning",
+        "bi-encoder", "dual encoder"
+      ]
+    },
+
+    "vector_search_infrastructure": {
+      "type": "hard_requirement",
+      "description": "Vector database or hybrid search infrastructure",
+      "aliases": [
+        "faiss", "milvus", "qdrant", "pinecone", "weaviate",
+        "opensearch", "elasticsearch", "vector search",
+        "vector database", "vector store", "vector index",
+        "approximate nearest neighbors", "ann", "hnsw",
+        "similarity search", "knn search", "hybrid search",
+        "dense vector search", "sparse retrieval"
+      ]
+    },
+
+    "information_retrieval": {
+      "type": "hard_requirement",
+      "description": "Search and ranking systems experience",
+      "aliases": [
+        "information retrieval", "bm25", "tf-idf", "tfidf",
+        "ranking", "learning to rank", "ltr", "lambdarank", "lambdamart",
+        "recommendation systems", "recommender systems", "search ranking",
+        "candidate retrieval", "passage retrieval", "document retrieval",
+        "reranking", "cross-encoder", "neural ranking",
+        "two-stage retrieval", "recall-precision tradeoff"
+      ]
+    },
+
+    "ranking_evaluation": {
+      "type": "hard_requirement",
+      "description": "Evaluation frameworks for ranking systems — NDCG, MRR, MAP",
+      "aliases": [
+        "ndcg", "mrr", "map", "precision at k", "recall at k",
+        "ranking evaluation", "retrieval evaluation", "offline evaluation",
+        "online evaluation", "a/b testing", "experimentation",
+        "eval framework", "evaluation framework",
+        "mlops", "weights & biases", "wandb", "mlflow",
+        "offline-to-online correlation"
+      ]
+    },
+
+    "python": {
+      "type": "hard_requirement",
+      "description": "Strong Python — production-grade code quality",
+      "aliases": [
+        "python", "python 3", "python programming",
+        "pyspark", "pytest", "fastapi", "flask", "django",
+        "asyncio", "type hints", "python packaging"
+      ]
+    },
+
+    "llm_finetuning": {
+      "type": "preferred",
+      "description": "LLM fine-tuning — LoRA, QLoRA, PEFT",
+      "aliases": [
+        "fine-tuning llms", "fine tuning", "lora", "qlora", "peft",
+        "rlhf", "instruction tuning", "sft", "dpo",
+        "parameter efficient fine-tuning", "adapter tuning",
+        "model fine-tuning", "llm training", "rlhf"
+      ]
+    },
+
+    "nlp_core": {
+      "type": "preferred",
+      "description": "Core NLP — the JD requires pre-LLM NLP depth, not just LLM wrappers",
+      "aliases": [
+        "nlp", "natural language processing", "text classification",
+        "named entity recognition", "ner", "sentiment analysis",
+        "question answering", "text generation", "summarization",
+        "language models", "bert", "roberta", "electra", "transformers",
+        "hugging face transformers", "huggingface", "tokenization",
+        "sequence labeling", "span extraction"
+      ]
+    },
+
+    "deep_learning_frameworks": {
+      "type": "preferred",
+      "description": "PyTorch or TensorFlow for model building",
+      "aliases": [
+        "pytorch", "tensorflow", "keras", "jax", "flax",
+        "deep learning", "neural networks", "transformer architecture",
+        "backpropagation", "gradient descent", "cuda"
+      ]
+    },
+
+    "mlops_serving": {
+      "type": "preferred",
+      "description": "ML infrastructure, serving, and production deployment",
+      "aliases": [
+        "mlops", "kubeflow", "bentoml", "mlflow", "ray", "triton",
+        "model serving", "model deployment", "inference optimization",
+        "torchserve", "onnx", "model quantization", "model compression",
+        "feature store", "model registry", "pipeline orchestration"
+      ]
+    },
+
+    "llm_ecosystem": {
+      "type": "preferred",
+      "description": "LLM ecosystem — context: the JD explicitly warns against LangChain-only experience as insufficient",
+      "aliases": [
+        "langchain", "llm", "large language models", "rag",
+        "retrieval augmented generation", "prompt engineering",
+        "llama", "mistral", "chatgpt api", "openai api",
+        "anthropic api", "vector search", "llama index",
+        "llamaindex", "gpt-4", "claude", "gemini"
+      ]
+    },
+
+    "distributed_systems": {
+      "type": "preferred",
+      "description": "Distributed systems or large-scale inference — bonus signal",
+      "aliases": [
+        "distributed systems", "kafka", "spark", "apache spark",
+        "flink", "apache flink", "airflow", "data pipelines",
+        "microservices", "system design", "scalable systems",
+        "kubernetes", "docker", "redis", "cassandra", "high throughput"
+      ]
+    },
+
+    "open_source_contributions": {
+      "type": "preferred",
+      "description": "Open-source contributions in AI/ML — explicit JD nice-to-have",
+      "aliases": [
+        "open source", "github", "open-source contributions",
+        "pull requests", "maintainer", "contributor"
+      ]
+    }
+  },
+
+  "negative_signals": {
+    "_comment": "Skills that, if dominant in a candidate's profile alongside missing core skills, are mild negative signals. Not hard filters — just inform the scoring.",
+    "cv_speech_primary": [
+      "computer vision", "image classification", "object detection",
+      "speech recognition", "tts", "text to speech", "yolo",
+      "image segmentation", "pose estimation", "optical flow",
+      "openCV", "gans"
+    ],
+    "non_technical_primary": [
+      "marketing", "seo", "content writing", "sales", "accounting",
+      "tally", "six sigma", "project management", "photoshop",
+      "illustrator", "figma", "salesforce crm", "sap"
+    ],
+    "recent_llm_only": [
+      "langchain", "prompt engineering", "chatgpt", "openai api",
+      "llama index", "llamaindex", "gpt wrapper"
+    ]
+  }
+}
