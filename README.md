@@ -71,7 +71,7 @@ All constraints enforced at runtime — see [Runtime Constraints](#runtime-const
 
 ### Overview
 
-The system is a three-stage pipeline: lexical retrieval narrows 100,000 candidates to ~8,500, feature engineering converts each candidate to a 22-dimensional vector, and a LightGBM LambdaRank model produces the final ranking. All inference is CPU-only, offline, and deterministic.
+The system is a 5-stage pipeline driven by offline LLM weak-supervision. First, offline **Gemma3:4b-it-q4_K_M** pairwise comparisons generate high-quality training labels via local Ollama. At inference time, lexical retrieval narrows 100,000 candidates to ~8,500, feature engineering maps candidates to 22-dimensional vectors with honeypot penalties, a LightGBM LambdaRank model computes the final ranking, and a deterministic reasoning compiler generates audit-ready justifications. All inference is CPU-only and strictly deterministic.
 
 ```
 candidates.jsonl (100K)
