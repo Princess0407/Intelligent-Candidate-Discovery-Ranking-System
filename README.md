@@ -50,10 +50,11 @@ Add `--force-precompute` to bypass the artifact cache and rebuild from scratch.
 
 ## Runtime Performance
 
-| Stage | Module | Operation | Time |
-|-------|--------|-----------|------|
-| Offline | `scripts/precompute.py` | BM25 indexing, feature precomputation, LightGBM training | ~7 min |
-| 0 | `src/rank.py` | Load precomputed artifacts (BM25, LightGBM, static features) | 0.96s |
+| Stage | Module | Operation | Runtime |
+|-------|--------|-----------|---------|
+| **Offline** | `experiments/...` | Gemma3 Pairwise LLM Annotation via Ollama | ~45 min |
+| **Offline** | `scripts/precompute.py` | BM25 indexing, static features, LightGBM training | ~7 min |
+| **0** | `src/rank.py` | Load precomputed artifacts (BM25, LightGBM, static features) | 0.96s |
 | 1 | `src/retrieval.py` | Dual-pass BM25 retrieval (top 5,000 + rare-term safety net) | 0.03s |
 | 2 | `src/rank.py` | Load Stage 1 candidate records via byte-offset index | 0.38s |
 | 2b | `src/features.py` | Live feature extraction (22-feature matrix) | 0.37s |
