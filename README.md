@@ -1,3 +1,14 @@
+---
+title: Intelligent Candidate Discovery Ranking System
+emoji: 🎯
+colorFrom: blue
+colorTo: indigo
+sdk: streamlit
+sdk_version: "1.41.0"
+app_file: app.py
+pinned: false
+---
+
 # Redrob Hackathon: Intelligent Candidate Discovery and Ranking System
 
 **A production grade, deterministic ranking pipeline for the Redrob Intelligent Candidate Discovery and Ranking Challenge.**
