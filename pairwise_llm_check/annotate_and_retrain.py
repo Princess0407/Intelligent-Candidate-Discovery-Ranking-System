@@ -1,62 +1,4 @@
-"""
-experiments/pairwise_llm_check/annotate_and_retrain.py
-
-Offline experiment: replace heuristic LightGBM training labels with LLM
-pairwise annotations on sampled Stage 1 candidates.
-
-ISOLATION GUARANTEE:
-    This script is NEVER imported by rank.py, features.py, reasoning.py, or
-    precompute.py. It is a standalone offline tool that lives entirely in
-    experiments/pairwise_llm_check/ and must never appear on any import path
-    used at inference time.
-
-BUDGET EXEMPTION:
-    This script is exempt from the 5-minute / CPU-only / 16 GB ranking budget,
-    the same way precompute.py is exempt. It runs offline during development
-    and may freely use external APIs, arbitrary wall-clock time, and all
-    available system resources.
-
-FIXES APPLIED vs PREVIOUS VERSION:
-    Fix 1 — Consistency multiplier: new model raw scores are multiplied by
-             consistency_score before ranking. This suppresses honeypot
-             candidates (consistency_score ≈ 0) regardless of what the LLM
-             judged about their skill profile. Previous version had 57/100
-             honeypots in new top-100 because the LLM had no knowledge of
-             data integrity violations.
-
-    Fix 2 — Spearman correlation: now uses scipy.stats.spearmanr over a
-             common candidate set, always returning a value in [-1, 1].
-             Previous version produced -19053 due to a rank-array mismatch.
-
-USAGE (Ollama — local, free, recommended):
-    python experiments/pairwise_llm_check/annotate_and_retrain.py \\
-        --candidates ./candidates.jsonl \\
-        --base-dir . \\
-        --provider ollama \\
-        --model gemma3:4b
-
-USAGE (Groq — free cloud):
-    python experiments/pairwise_llm_check/annotate_and_retrain.py \\
-        --candidates ./candidates.jsonl \\
-        --base-dir . \\
-        --provider groq \\
-        --api-key $GROQ_API_KEY
-
-USAGE (Anthropic — paid):
-    python experiments/pairwise_llm_check/annotate_and_retrain.py \\
-        --candidates ./candidates.jsonl \\
-        --base-dir . \\
-        --provider anthropic \\
-        --api-key $ANTHROPIC_API_KEY
-
-RUNNING STEP 11 ONLY (re-run comparison after model is already trained):
-    Same command as above — if lgbm_model_llm.pkl already exists and
-    annotations.jsonl already exists, the script detects this and skips
-    straight to Step 11 comparison. No re-annotation needed.
-"""
-
 from __future__ import annotations
-
 import argparse
 import json
 import logging
@@ -69,11 +11,7 @@ import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-import numpy as np
-
-# ---------------------------------------------------------------------------
-# Path bootstrap
-# ---------------------------------------------------------------------------
+import numpy as np                                                                           
 _THIS_FILE    = os.path.abspath(__file__)
 _EXP_DIR      = os.path.dirname(_THIS_FILE)
 _EXPERIMENTS  = os.path.dirname(_EXP_DIR)
@@ -82,22 +20,14 @@ _SRC_DIR      = os.path.join(_PROJECT_ROOT, "src")
 
 for _p in [_SRC_DIR, _PROJECT_ROOT]:
     if _p not in sys.path:
-        sys.path.insert(0, _p)
-
-# ---------------------------------------------------------------------------
-# Logging
-# ---------------------------------------------------------------------------
+        sys.path.insert(0, _p)    
+                                                                             
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s [pairwise] %(message)s",
     datefmt="%H:%M:%S",
 )
-logger = logging.getLogger("pairwise_llm")
-
-
-# ---------------------------------------------------------------------------
-# Provider config
-# ---------------------------------------------------------------------------
+logger = logging.getLogger("pairwise_llm")                                                                 
 _PROVIDER_SLEEP: Dict[str, float] = {
     "groq":      2.1,
     "anthropic": 0.1,
@@ -117,10 +47,7 @@ _DEFAULT_MODELS: Dict[str, str] = {
     "cerebras":  "llama3.1-8b",
 }
 
-
-# ---------------------------------------------------------------------------
-# STEP 4 — JD SUMMARY
-# ---------------------------------------------------------------------------
+                                                                           
 
 def build_jd_summary(jd_config) -> str:
     lines = ["JOB: Senior AI/ML Engineer — Retrieval & Ranking Systems"]
@@ -142,17 +69,10 @@ def build_jd_summary(jd_config) -> str:
     lines.append("EXPERIENCE: 5-9 years preferred")
     lines.append("NOTICE PERIOD: Sub-30 days preferred; 30+ days raises the bar")
     return "\n".join(lines)
-
-
-# ---------------------------------------------------------------------------
-# STEP 5 — CANDIDATE SUMMARY
-# ---------------------------------------------------------------------------
+                                                                          
 
 def build_candidate_summary(candidate: dict) -> str:
-    """
-    Build structured candidate summary for the prompt.
-    Excludes profile.summary and profile.headline (templated noise).
-    """
+    
     profile  = candidate.get("profile", {}) or {}
     signals  = candidate.get("redrob_signals", {}) or {}
 
@@ -168,7 +88,7 @@ def build_candidate_summary(candidate: dict) -> str:
         f"{profile.get('country', 'unknown')}"
     )
 
-    # Skills — top 5 by duration_months
+                                       
     skills = sorted(
         candidate.get("skills", []) or [],
         key=lambda s: s.get("duration_months", 0),
@@ -187,7 +107,7 @@ def build_candidate_summary(candidate: dict) -> str:
             skill_lines.append(f"{name} ({prof}, {dur}mo, unverified)")
     lines.append(f"Skills: {'; '.join(skill_lines)}")
 
-    # Career — top 3 roles
+                          
     for i, role in enumerate((candidate.get("career_history", []) or [])[:3]):
         desc = (role.get("description") or "")[:60].replace("\n", " ")
         lines.append(
@@ -204,10 +124,6 @@ def build_candidate_summary(candidate: dict) -> str:
 
     return "\n".join(lines)
 
-
-# ---------------------------------------------------------------------------
-# STEP 6 — LLM API CALLS
-# ---------------------------------------------------------------------------
 
 def _call_groq(client, model: str, prompt: str) -> Tuple[str, int, int]:
     response = client.chat.completions.create(
@@ -240,11 +156,7 @@ def _call_cerebras(client, model: str, prompt: str) -> Tuple[str, int, int]:
 
 
 def _call_ollama(model: str, prompt: str) -> Tuple[str, int, int]:
-    """
-    Call local Ollama server.
-    num_gpu=99 forces all layers onto GPU if VRAM allows.
-    num_ctx=2048 limits KV cache so model fits in 4GB VRAM.
-    """
+    
     import requests as _req
     try:
         response = _req.post(
@@ -338,9 +250,9 @@ No explanation. No punctuation. Just the label."""
     return verdict, inp, out
 
 
-# ---------------------------------------------------------------------------
-# STEP 7 — ELO COMPUTATION
-# ---------------------------------------------------------------------------
+                                                                             
+                          
+                                                                             
 
 def compute_elo_scores(
     annotations: List[dict],
@@ -365,14 +277,14 @@ def compute_elo_scores(
         if total == 0:
             elo[cid] = 1500.0
         else:
-            win_rate = (wins[cid] + 0.5) / (total + 1)   # Laplace smoothing
+            win_rate = (wins[cid] + 0.5) / (total + 1)                      
             elo[cid] = 400 * math.log10(win_rate / (1 - win_rate)) + 1500
     return elo
 
 
-# ---------------------------------------------------------------------------
-# STEP 8 — ELO → 0-3 LABELS
-# ---------------------------------------------------------------------------
+                                                                             
+                           
+                                                                             
 
 def elo_to_labels(elo_scores: Dict[str, float]) -> Dict[str, int]:
     values = sorted(elo_scores.values())
@@ -389,9 +301,9 @@ def elo_to_labels(elo_scores: Dict[str, float]) -> Dict[str, int]:
     return labels
 
 
-# ---------------------------------------------------------------------------
-# STEP 11 — COMPARISON REPORT
-# ---------------------------------------------------------------------------
+                                                                             
+                             
+                                                                             
 
 def _get_top_skill(candidate: dict) -> str:
     skills = sorted(
@@ -407,11 +319,7 @@ def _spearman(
     ranks_a: Dict[str, int],
     ranks_b: Dict[str, int],
 ) -> float:
-    """
-    FIX 2: Correct Spearman correlation using scipy.stats.spearmanr.
-    Always returns a value in [-1.0, +1.0].
-    Previous version returned -19053 due to rank-array mismatch.
-    """
+    
     from scipy.stats import spearmanr
     common = [cid for cid in candidate_ids if cid in ranks_a and cid in ranks_b]
     if len(common) < 2:
@@ -432,13 +340,7 @@ def print_model_comparison(
     new_model,
     feature_columns: List[str],
 ) -> None:
-    """
-    Run inference with both models on the full Stage 1 pool and print a
-    structured comparison. Every number comes from actual model inference.
-
-    FIX 1: New model scores multiplied by consistency_score before ranking.
-    This suppresses honeypot candidates regardless of LLM judgment quality.
-    """
+    
     from features import build_feature_vector
 
     logger.info("Building full feature matrix for comparison report...")
@@ -470,15 +372,15 @@ def print_model_comparison(
     X_full = np.array(feature_rows, dtype=np.float32)
     logger.info("Comparison feature matrix: shape=%s", X_full.shape)
 
-    # ---- Old model scores (unchanged) ----
+                                            
     old_raw    = old_model.predict(X_full)
     old_scores = {cid: float(s) for cid, s in zip(ordered_ids, old_raw)}
     old_ranked = sorted(old_scores.items(), key=lambda x: (-x[1], x[0]))
     old_rank_map = {cid: rank for rank, (cid, _) in enumerate(old_ranked, 1)}
 
-    # ---- New model scores — FIX 1: multiply by consistency_score ----
-    # This ensures candidates with data integrity violations (c1-c5 failures)
-    # are suppressed even if the LLM judged them favourably on skill profile.
+                                                                       
+                                                                             
+                                                                             
     new_raw    = new_model.predict(X_full)
     new_scores = {
         cid: float(s) * consistency_map.get(cid, 1.0)
@@ -491,11 +393,11 @@ def print_model_comparison(
     new_top10 = [cid for cid, _ in new_ranked[:10]]
     overlap   = len(set(old_top10) & set(new_top10))
 
-    # ---- FIX 2: Correct Spearman over common top-100 set ----
+                                                               
     top100_old = [cid for cid, _ in old_ranked[:100]]
     rho = _spearman(top100_old, old_rank_map, new_rank_map)
 
-    # ---- Movers ----
+                      
     moved_up:   List[Tuple[str, int, int]] = []
     moved_down: List[Tuple[str, int, int]] = []
     for cid in ordered_ids:
@@ -510,12 +412,12 @@ def print_model_comparison(
     moved_up.sort(key=lambda x: x[1] - x[2], reverse=True)
     moved_down.sort(key=lambda x: x[2] - x[1], reverse=True)
 
-    # ---- Honeypot check on new top-100 ----
+                                             
     new_top100        = [cid for cid, _ in new_ranked[:100]]
     low_cons_count    = sum(1 for cid in new_top100 if consistency_map.get(cid, 1.0) < 0.25)
     honeypot_pass     = low_cons_count < 10
 
-    # ---- Print report ----
+                            
     print("\n" + "=" * 60)
     print("=== MODEL COMPARISON REPORT ===")
     print("=" * 60)
@@ -581,12 +483,8 @@ def print_model_comparison(
             low_cons_count,
         )
     else:
-        logger.info("Honeypot audit PASSED: %d low-consistency in new top-100.", low_cons_count)
+        logger.info("Honeypot audit PASSED: %d low-consistency in new top 100.", low_cons_count)
 
-
-# ---------------------------------------------------------------------------
-# MAIN
-# ---------------------------------------------------------------------------
 
 def main() -> None:
     parser = argparse.ArgumentParser(
@@ -614,7 +512,7 @@ def main() -> None:
     call_sleep = _PROVIDER_SLEEP[provider]
     price_in, price_out = _PROVIDER_PRICE[provider]
 
-    # Validate API key requirement
+                                  
     if provider in ("groq", "anthropic", "cerebras") and not args.api_key:
         logger.error("--api-key is required when --provider is %s", provider)
         sys.exit(1)
@@ -640,7 +538,7 @@ def main() -> None:
     logger.info("Old model   %s  (will NOT be touched)", old_model_path)
     logger.info("=" * 60)
 
-    # ---- Ollama reachability check ----
+                                         
     if provider == "ollama":
         import requests as _req
         try:
@@ -666,7 +564,7 @@ def main() -> None:
             )
             sys.exit(1)
 
-    # ---- Import project modules ----
+                                      
     from features import build_feature_vector, FEATURE_COLUMNS
     from features import (
         c1_timeline_impossibility, c2_signup_anomaly,
@@ -676,7 +574,7 @@ def main() -> None:
     from jd_parser import parse_jd
     from retrieval import load_numpy_bm25_artifacts, run_dual_pass_retrieval
 
-    # ---- STEP 1: Load Stage 1 pool ----
+                                         
     logger.info("STEP 1: Loading Stage 1 candidate pool...")
 
     bm25 = load_numpy_bm25_artifacts(precomputed_dir)
@@ -706,7 +604,7 @@ def main() -> None:
     stage1_bm25_median = float(np.median(list(bm25_scores.values())))
     logger.info("Stage 1 pool: %d candidates, median BM25=%.4f", len(stage1_ids), stage1_bm25_median)
 
-    # Load Stage 1 records
+                          
     offsets_path = os.path.join(precomputed_dir, "candidate_offsets.pkl")
     stage1_candidate_list: List[dict] = []
     if os.path.isfile(offsets_path):
@@ -752,7 +650,7 @@ def main() -> None:
     }
     logger.info("Stage 1 records loaded: %d candidates", len(stage1_candidates))
 
-    # ---- Detect existing model — skip to Step 11 if already trained ----
+                                                                          
     model_already_exists  = os.path.isfile(new_model_path)
     annots_already_exist  = os.path.isfile(annotations_path)
 
@@ -788,9 +686,9 @@ def main() -> None:
         logger.info("=" * 60)
         return
 
-    # ---- Full pipeline Steps 2-10 (runs when no model exists yet) ----
+                                                                        
 
-    # ---- STEP 2: Stratified sampling ----
+                                           
     logger.info("STEP 2: Stratified sampling of 500 candidates...")
     random.seed(42)
 
@@ -827,7 +725,7 @@ def main() -> None:
     lgbm_ranked = sorted(zip(all_fv_ids, raw_scores), key=lambda x: -x[1])
     lgbm_rank_map = {cid: rank for rank, (cid, _) in enumerate(lgbm_ranked, 1)}
 
-    # Stratify
+              
     TOTAL     = 500
     N_A, N_B, N_C = 75, 100, 325
     MIN_LOW_CONS   = 25
@@ -854,7 +752,7 @@ def main() -> None:
                 len(guaranteed_low), MIN_LOW_CONS)
     logger.info("Total sample pool: %d candidates", len(sample_ids))
 
-    # ---- STEP 3: Pairwise matchups ----
+                                         
     logger.info("STEP 3: Generating pairwise matchups (5 opponents per candidate)...")
     N_OPPONENTS = 5
     seen_pairs:  set = set()
@@ -873,10 +771,10 @@ def main() -> None:
 
     logger.info("Unique pairs generated: %d", len(pairs))
 
-    # ---- STEP 6: Annotation ----
+                                  
     logger.info("STEP 6: Annotating pairs with %s (%s)...", provider, model)
 
-    # Load existing annotations for resumability
+                                                
     existing_annotations: List[dict] = []
     existing_pair_keys: set = set()
     if os.path.isfile(annotations_path):
@@ -897,10 +795,10 @@ def main() -> None:
     remaining_pairs = [(a, b) for a, b in pairs if frozenset({a, b}) not in existing_pair_keys]
     logger.info("Pairs remaining to annotate: %d of %d", len(remaining_pairs), len(pairs))
 
-    # Build JD summary once
+                           
     jd_summary = build_jd_summary(jd_config)
 
-    # Init client
+                 
     client = None
     if provider == "groq":
         from groq import Groq
@@ -917,7 +815,7 @@ def main() -> None:
     else:
         logger.info("Ollama provider: calls go directly to localhost:11434 via requests")
 
-    # Timing probe (5 calls)
+                            
     logger.info("Running 5-call timing probe for Ollama...")
     probe_pairs  = remaining_pairs[:5] if len(remaining_pairs) >= 5 else pairs[:5]
     probe_times  = []
@@ -1019,7 +917,7 @@ def main() -> None:
         total_inp, total_out, actual_cost,
     )
 
-    # ---- STEP 7: Elo ----
+                           
     logger.info("STEP 7: Computing Elo scores from pairwise verdicts...")
     elo_scores = compute_elo_scores(existing_annotations, sample_ids)
     elo_vals   = list(elo_scores.values())
@@ -1033,7 +931,7 @@ def main() -> None:
     logger.info("Elo above 1500 (winners): %d | at/below 1500 (losers): %d",
                 winners, len(elo_vals) - winners)
 
-    # ---- STEP 8: Labels ----
+                              
     logger.info("STEP 8: Converting Elo scores to 0-3 relevance labels...")
     labels = elo_to_labels(elo_scores)
     dist   = {0: 0, 1: 0, 2: 0, 3: 0}
@@ -1046,7 +944,7 @@ def main() -> None:
             "Only %d candidates with label 3 — training signal may be sparse.", dist[3]
         )
 
-    # ---- STEP 9: Feature matrix for training ----
+                                                   
     logger.info("STEP 9: Extracting feature matrix for %d annotated candidates...", len(sample_ids))
     train_rows = []
     train_ids  = []
@@ -1068,7 +966,7 @@ def main() -> None:
     y_full       = np.array([labels.get(cid, 0) for cid in train_ids], dtype=np.int32)
     logger.info("Feature matrix (%d): shape=%s", len(sample_ids), X_train_full.shape)
 
-    # ---- STEP 10: Train LightGBM ----
+                                       
     logger.info("STEP 10: Training LightGBM on LLM pairwise labels...")
 
     random.seed(42)
@@ -1130,7 +1028,7 @@ def main() -> None:
     logger.info("New model saved to: %s", new_model_path)
     logger.info("lgbm_model.pkl untouched: %s", old_model_path)
 
-    # ---- STEP 11: Comparison ----
+                                   
     logger.info("STEP 11: Generating model comparison report...")
     with open(old_model_path, "rb") as f:
         old_model_final = pickle.load(f)
