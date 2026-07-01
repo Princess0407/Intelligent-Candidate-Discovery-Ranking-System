@@ -25,13 +25,6 @@ from typing import Any, Dict, List, Optional, Tuple
 from features import FEATURE_COLUMNS
 
 
-# ---------------------------------------------------------------------------
-# Phrasing variant pool for the low_credibility concern.
-# Variant is chosen by MD5 hash of candidate_id — fully deterministic
-# across reruns (MD5 output does not depend on PYTHONHASHSEED).
-# Each string describes the same signal but with enough lexical distance
-# to pass the 0.65 n-gram collision threshold in _ngram_collision_check.
-# ---------------------------------------------------------------------------
 
 _LOW_CRED_VARIANTS: List[str] = [
     "high ratio of unverified advanced skill claims vs assessed scores",
@@ -56,11 +49,9 @@ def _select_low_cred_variant(candidate_id: str) -> str:
 
 
 
-# ---------------------------------------------------------------------------
-# Tone templates at different score percentiles
 # Percentile boundaries: top 10% = strong, 10-40% = positive, 40-70% = neutral,
 # 70-90% = cautious, 90-100% = weak
-# ---------------------------------------------------------------------------
+
 
 _TONE_THRESHOLDS = [
     (0.90, "strong"),
@@ -82,7 +73,6 @@ def _get_tone(percentile: float) -> str:
     return "weak"
 
 
-# Sentence starters per tone (varied to avoid n-gram collision)
 _OPENING_BY_TONE = {
     "strong": [
         "Highly competitive profile with direct production experience in",
@@ -119,7 +109,6 @@ def _extract_candidate_numbers(candidate: dict) -> set:
     """
     numbers = set()
     raw_json = json.dumps(candidate)
-    # Find all numbers in the JSON string (int and float)
     for match in re.finditer(r'\b(\d+(?:\.\d+)?)\b', raw_json):
         numbers.add(match.group(1))
     return numbers
@@ -185,12 +174,6 @@ def _get_hard_req_matches(candidate: dict, jd_config) -> List[str]:
     return matched
 
 
-# ---------------------------------------------------------------------------
-# JD relevance set cache — built once per jd_config object, reused forever.
-# Key: id(jd_config)  Value: frozenset of lowercase JD-relevant skill names.
-# This avoids recomputing get_all_query_terms() + hard_req alias iteration
-# on every one of the 8,533 calls made during feature extraction.
-# ---------------------------------------------------------------------------
 _JD_RELEVANT_CACHE: Dict[int, frozenset] = {}
 
 
@@ -240,7 +223,7 @@ def _get_top_skills(candidate: dict, n: int = 3, jd_config=None) -> List[str]:
             combined = relevant[:n] + irrelevant[:backfill_n]
             return [s.get("name", "") for s in combined[:n] if s.get("name")]
 
-    # Fallback: pure tenure ranking
+    # fallback
     sorted_skills = sorted(skills, key=lambda s: s.get("duration_months") or 0, reverse=True)
     return [s.get("name", "") for s in sorted_skills[:n] if s.get("name")]
 
@@ -328,7 +311,7 @@ def _get_severity_ranked_concern(
     Priority concern selection logic.
     Evaluates in a strict order and returns the first matching concern.
     """
-    # Priority 1: Notice period > 90 days
+    # Priority 1  Notice period > 90 days
     notice_days = candidate.get("redrob_signals", {}).get("notice_period_days")
     if notice_days is not None:
         try:
@@ -431,23 +414,19 @@ class ReasoningCompiler:
         """
         Generate reasoning text for a candidate using one of 4 distinct templates.
         """
-        # MD5-based deterministic hashing for template selection to stay byte-identical
+      
         stable_hash = int(
             hashlib.md5(candidate.get("candidate_id", "").encode("utf-8", errors="ignore")).hexdigest()[:8], 16
         )
         template_idx = stable_hash % 4
 
-        # Enforce that no two consecutive reasoning strings share the same template index
         if self._last_template_idx is not None and template_idx == self._last_template_idx:
             template_idx = (template_idx + 1) % 4
         self._last_template_idx = template_idx
 
-        # Extract grounding facts from the actual candidate data
         jd_match = get_specific_jd_match(candidate, self.jd_config)
         location = candidate.get("profile", {}).get("location") or "unknown location"
         concern = _get_severity_ranked_concern(feature_vector, candidate)
-
-        # Pull raw numeric values directly from the JSON to guarantee audit consistency.
         _profile = candidate.get("profile") or {}
         _signals = candidate.get("redrob_signals") or {}
 
@@ -473,7 +452,6 @@ class ReasoningCompiler:
             except (TypeError, ValueError):
                 pass
 
-        # Build reasoning based on selected template index
         if template_idx == 0:
             if concern:
                 reasoning = (
@@ -517,8 +495,7 @@ class ReasoningCompiler:
                     f"and is available in {notice_str} days."
                 )
 
-        else: # template_idx == 3
-            # Determine verifiable point
+        else: 
             github_raw = _signals.get("github_activity_score")
             verifiable_point = "strong technical skills"
             if github_raw is not None:
@@ -565,12 +542,9 @@ class ReasoningCompiler:
                     f"and is available in {notice_str} days."
                 )
 
-        # Assemble candidate numbers set for audit
+      
         candidate_numbers = _extract_candidate_numbers(candidate)
 
-        # Numeric audit — with the raw-value extraction above, violations should be
-        # zero. This is a safety net only; if a violation still fires, omit the
-        # offending number rather than leaving a '[N]' placeholder in the output.
         audit_passed, violations = _numeric_regex_audit(reasoning, candidate_numbers)
         if not audit_passed:
             for v in violations:
@@ -579,21 +553,16 @@ class ReasoningCompiler:
                     '',
                     reasoning,
                 ).strip()
-            # Collapse any double spaces left behind
+        
             reasoning = re.sub(r'  +', ' ', reasoning)
-            # Strip any residual bracket artefacts (belt-and-suspenders)
             reasoning = re.sub(r'\[N\]', '', reasoning).strip()
 
-        # Clean double periods or extra trailing periods
         reasoning = reasoning.replace("..", ".").replace(" .", ".").strip()
 
-        # N-gram collision check
+       
         collision_ok, sim = _ngram_collision_check(reasoning, self._generated_texts)
         if not collision_ok:
-            # Add unique differentiator using rank (integer rank is safe — not from candidate JSON)
             reasoning = f"[Rank {rank}] " + reasoning
-
-        # Register this text for future collision checks
         self._generated_texts.append(reasoning)
 
         return reasoning
@@ -611,7 +580,6 @@ class ReasoningCompiler:
         """
         reasoning = self.compile(candidate, feature_vector, lgbm_score, rank)
 
-        # Identify top 3 features by absolute magnitude
         feature_items = sorted(
             [(k, abs(v)) for k, v in feature_vector.items()],
             key=lambda x: x[1],
@@ -640,7 +608,6 @@ if __name__ == "__main__":
 
     jd = parse_jd(os.path.join(base_dir, "data", "skill_aliases.json"))
 
-    # Synthetic candidates at different score levels
     def make_candidate(cid, yoe, location, country, notice, github, skills, hard_req_frac):
         return {
             "candidate_id": cid,

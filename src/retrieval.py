@@ -26,9 +26,6 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# NumpyBM25 — vectorized scorer backed by a precomputed sparse matrix
-# ---------------------------------------------------------------------------
 
 class NumpyBM25:
     """
@@ -49,7 +46,7 @@ class NumpyBM25:
 
     def __init__(self, vocab: Dict[str, int], bm25_matrix) -> None:
         self.vocab = vocab
-        self.bm25_matrix = bm25_matrix        # scipy CSR (vocab_size × n_docs)
+        self.bm25_matrix = bm25_matrix       
         self._n_docs: int  = bm25_matrix.shape[1]
         self._n_vocab: int = bm25_matrix.shape[0]
 
@@ -68,7 +65,6 @@ class NumpyBM25:
                 matched += 1
         if matched == 0:
             return np.zeros(self._n_docs, dtype=np.float32)
-        # Single sparse matrix-vector multiply — the entire fast path
         return np.asarray(q_vec @ self.bm25_matrix, dtype=np.float32).flatten()
 
 
@@ -174,7 +170,6 @@ def run_dual_pass_retrieval(
     """
     t0 = time.time()
 
-    # --- Pass A: Skill aliases (JD taxonomy expansion) ---
     query_a_terms = jd_config.get_all_query_terms()
     query_a_tokens = tokenize_query(query_a_terms)
     logger.info("Pass A query tokens (%d): %s...", len(query_a_tokens),
@@ -182,17 +177,13 @@ def run_dual_pass_retrieval(
 
     scores_a = bm25.get_scores(query_a_tokens)
 
-    # --- Pass B: Production-context keywords ---
     query_b_tokens = tokenize_query(jd_config.production_keywords)
     logger.info("Pass B query tokens (%d): %s", len(query_b_tokens), query_b_tokens)
 
     scores_b = bm25.get_scores(query_b_tokens)
-
-    # Union of scores: take max per candidate (better recall than sum)
     import numpy as np
     combined_scores = np.maximum(scores_a, scores_b)
 
-    # Get top_n indices by score
     top_n_actual = min(top_n, len(candidate_ids))
     top_indices = np.argpartition(combined_scores, -top_n_actual)[-top_n_actual:]
     top_indices = top_indices[np.argsort(combined_scores[top_indices])[::-1]]
@@ -202,20 +193,17 @@ def run_dual_pass_retrieval(
 
     logger.info("Pass A+B union: %d candidates (target %d)", len(top_candidates), top_n)
 
-    # --- Rare-term Safety Net ---
     rare_pool_ids = set()
     rare_pool_scores = {}
 
     for rare_term in jd_config.rare_terms:
         rare_tokens = tokenize_query([rare_term])
         rare_scores = bm25.get_scores(rare_tokens)
-        # Any candidate with non-zero score for rare term qualifies
         rare_nonzero = np.where(rare_scores > 0)[0]
         for idx in rare_nonzero:
             cid = candidate_ids[idx]
             if cid not in top_scores:
                 rare_pool_ids.add(cid)
-                # Use the rare-term score, or existing if already in pool
                 rare_pool_scores[cid] = max(
                     rare_pool_scores.get(cid, 0.0),
                     float(rare_scores[idx])
@@ -223,10 +211,9 @@ def run_dual_pass_retrieval(
 
     logger.info("Rare-term safety net added %d additional candidates", len(rare_pool_ids))
 
-    # Merge: top_5000 ∪ rare_pool (maintain ordering — top candidates first)
+ 
     all_scores = {**top_scores, **rare_pool_scores}
 
-    # Re-sort merged list
     all_ordered = sorted(all_scores.keys(), key=lambda cid: all_scores[cid], reverse=True)
 
     elapsed = time.time() - t0
@@ -290,8 +277,6 @@ def retrieve_candidate_data(
             len(missing_ids),
             list(missing_ids)[:5]
         )
-
-    # Return in the original stage1 order (preserving BM25 rank)
     ordered = [found[cid] for cid in stage1_ids if cid in found]
 
     logger.info(
@@ -321,12 +306,12 @@ if __name__ == "__main__":
     print(f"Running dual-pass retrieval on {len(candidate_ids)} indexed candidates...")
     stage1_ids, bm25_scores = run_dual_pass_retrieval(bm25, candidate_ids, jd_config)
 
-    print(f"\nStage 1 retrieved: {len(stage1_ids)} candidates")
+    print(f"Stage 1 retrieved: {len(stage1_ids)} candidates")
     print(f"Top 10 by BM25 score:")
     for i, cid in enumerate(stage1_ids[:10], 1):
         print(f"  {i:2d}. {cid}  score={bm25_scores[cid]:.4f}")
 
     import numpy as np
     scores = list(bm25_scores.values())
-    print(f"\nScore stats: min={min(scores):.4f}, max={max(scores):.4f}, "
+    print(f"Score stats: min={min(scores):.4f}, max={max(scores):.4f}, "
           f"median={float(np.median(scores)):.4f}, mean={float(np.mean(scores)):.4f}")

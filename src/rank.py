@@ -8,15 +8,9 @@ import pickle
 import sys
 import time
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
-
-# ---------------------------------------------------------------------------
-# Path bootstrap — allow sibling src/ modules and scripts/ to be found
-# regardless of how this script is invoked (python src/rank.py or
-# python -m src.rank). Both src/ and scripts/ are added to sys.path.
-# ---------------------------------------------------------------------------
-_SRC_DIR = os.path.dirname(os.path.abspath(__file__))          # .../src
-_PROJECT_ROOT = os.path.dirname(_SRC_DIR)                       # .../
+from typing import Dict, List, Optional, Tuple                                                                            
+_SRC_DIR = os.path.dirname(os.path.abspath(__file__))                   
+_PROJECT_ROOT = os.path.dirname(_SRC_DIR)                             
 _SCRIPTS_DIR = os.path.join(_PROJECT_ROOT, "scripts")
 for _p in [_SRC_DIR, _SCRIPTS_DIR, _PROJECT_ROOT]:
     if _p not in sys.path:
@@ -37,7 +31,7 @@ def setup_logging(base_dir: str) -> logging.Logger:
     logger = logging.getLogger("rank")
     logger.setLevel(logging.DEBUG)
 
-    # File handler — full detail
+                                
     fh = logging.FileHandler(log_file, encoding="utf-8")
     fh.setLevel(logging.DEBUG)
     fh.setFormatter(logging.Formatter(
@@ -45,7 +39,7 @@ def setup_logging(base_dir: str) -> logging.Logger:
         datefmt="%H:%M:%S"
     ))
 
-    # Console handler — INFO only
+                                 
     ch = logging.StreamHandler(sys.stdout)
     ch.setLevel(logging.INFO)
     ch.setFormatter(logging.Formatter(
@@ -65,7 +59,7 @@ def load_artifacts(precomputed_dir: str, logger: logging.Logger):
     Tries fast NumPy / native-format artifacts first; falls back to pickle
     if the fast artifacts haven't been built yet (backward-compatible).
     """
-    # ── BM25 scorer ──────────────────────────────────────────────────────
+                                                                           
     from retrieval import load_numpy_bm25_artifacts
     bm25 = load_numpy_bm25_artifacts(precomputed_dir)
     if bm25 is not None:
@@ -79,7 +73,7 @@ def load_artifacts(precomputed_dir: str, logger: logging.Logger):
             bm25 = pickle.load(f)
         logger.info("Stage 0: BM25Okapi loaded (legacy pickle path)")
 
-    # ── Candidate IDs ────────────────────────────────────────────────────
+                                                                           
     ids_path = os.path.join(precomputed_dir, "candidate_ids.pkl")
     if not os.path.isfile(ids_path):
         logger.error("Missing artifact: %s — run precompute.py first", ids_path)
@@ -87,7 +81,7 @@ def load_artifacts(precomputed_dir: str, logger: logging.Logger):
     with open(ids_path, "rb") as f:
         candidate_ids = pickle.load(f)
 
-    # ── LightGBM model — native text format is ~10-20x faster than pickle ─
+                                                                            
     lgbm_txt = os.path.join(precomputed_dir, "lgbm_model.txt")
     lgbm_pkl = os.path.join(precomputed_dir, "lgbm_model.pkl")
     model = None
@@ -107,7 +101,7 @@ def load_artifacts(precomputed_dir: str, logger: logging.Logger):
             model = pickle.load(f)
         logger.info("Stage 0: LightGBM loaded from pickle (legacy path)")
 
-    # ── Static Features ──────────────────────────────────────────────────
+                                                                           
     static_path = os.path.join(precomputed_dir, "static_features.pkl")
     static_features = None
     if os.path.isfile(static_path):
@@ -127,12 +121,7 @@ def load_artifacts(precomputed_dir: str, logger: logging.Logger):
         len(candidate_ids),
     )
     return bm25, candidate_ids, model, static_features
-
-
-
-# ---------------------------------------------------------------------------
-# Stream candidate data for Stage 1 candidates only
-# ---------------------------------------------------------------------------
+                                                                        
 
 def load_stage1_candidates(
     candidates_path: str,
@@ -166,7 +155,7 @@ def load_stage1_candidates(
             if cid and cid in stage1_set:
                 found[cid] = c
                 if len(found) == len(stage1_set):
-                    break  # Early exit when all found
+                    break                             
 
     if malformed_count > 0:
         logger.warning("Skipped %d malformed JSONL lines during loading", malformed_count)
@@ -178,14 +167,13 @@ def load_stage1_candidates(
             len(missing), list(missing)[:5]
         )
 
-    # Return in stage1 order (preserving BM25 retrieval rank)
+                                                             
     ordered = [found[cid] for cid in stage1_ids if cid in found]
     logger.info(
         "Loaded %d stage1 candidates (%d missing, %d malformed)",
         len(ordered), len(missing), malformed_count
     )
     return ordered, malformed_count
-
 
 def load_stage1_candidates_fast(
     candidates_path: str,
@@ -234,11 +222,6 @@ def load_stage1_candidates_fast(
     )
     return ordered, malformed_count
 
-
-
-# ---------------------------------------------------------------------------
-# Feature extraction for stage1 candidates
-# ---------------------------------------------------------------------------
 
 def extract_features_for_ranking(
     candidates: List[dict],
@@ -310,11 +293,6 @@ def run_lightgbm_inference(
     )
     return {cid: float(score) for cid, score in zip(ordered_ids, raw_scores)}
 
-
-# ---------------------------------------------------------------------------
-# Monotonicity enforcement + tiebreaking
-# ---------------------------------------------------------------------------
-
 def _normalize_scores(top_100_raw: List[Tuple[str, float]], logger: logging.Logger) -> List[Tuple[str, float, int]]:
     """
     Apply min-max normalization to raw scores and assign ranks 1..N.
@@ -324,8 +302,8 @@ def _normalize_scores(top_100_raw: List[Tuple[str, float]], logger: logging.Logg
         return []
 
     top_scores = [s for _, s in top_100_raw]
-    score_min = top_scores[-1]   # lowest of top 100
-    score_max = top_scores[0]    # highest (rank 1)
+    score_min = top_scores[-1]                      
+    score_max = top_scores[0]                      
     score_range = score_max - score_min
 
     result = []
@@ -337,9 +315,9 @@ def _normalize_scores(top_100_raw: List[Tuple[str, float]], logger: logging.Logg
         else:
             normalized = 1.0 - (rank - 1) / 99.0
 
-        # Track for monotonicity
+                                
         if prev_normalized is not None and normalized > prev_normalized + 1e-9:
-            # Should not happen after sorting — log if it does
+                                                              
             logger.error("MONOTONICITY VIOLATION at rank %d", rank)
         prev_normalized = normalized
         result.append((cid, normalized, rank))
@@ -359,13 +337,13 @@ def sort_and_enforce_monotonicity(
     Returns:
         List of (candidate_id, score, rank) sorted by rank.
     """
-    # Sort: primary by score desc, secondary by candidate_id asc (deterministic tiebreak)
+                                                                                         
     sorted_candidates = sorted(
         lgbm_scores.items(),
         key=lambda x: (-x[1], x[0]),
     )
 
-    # Normalize within top-100 only — not across full pool
+                                                          
     top_100_raw = sorted_candidates[:100]
     return _normalize_scores(top_100_raw, logger)
 
@@ -383,12 +361,7 @@ def assert_monotonicity(ranked: List[Tuple[str, float, int]]) -> None:
         assert curr_score <= prev_score + 1e-9, (
             f"Monotonicity violation: rank {i} score {prev_score:.8f} "
             f"< rank {i+1} score {curr_score:.8f}"
-        )
-
-
-# ---------------------------------------------------------------------------
-# Pre-submission audits (Section 8.1 and 8.2) — blocking checks
-# ---------------------------------------------------------------------------
+        )                                                                       
 
 def run_honeypot_audit(
     top_100_candidates: List[dict],
@@ -440,7 +413,7 @@ def run_diversity_audit(
         top_100_candidates,
         feature_vectors,
         max_signature_share=0.25,
-        max_single_company_share=0.30,  # 30% per architecture doc Section 8.2
+        max_single_company_share=0.30,                                        
     )
 
     print_diversity_report(report)
@@ -464,12 +437,7 @@ def run_diversity_audit(
             )
         sys.exit(3)
 
-    logger.info("Diversity audit PASSED.")
-
-
-# ---------------------------------------------------------------------------
-# Reasoning trace (Section 8.3) — top 30 candidates
-# ---------------------------------------------------------------------------
+    logger.info("Diversity audit PASSED.")                                                                       
 
 def write_reasoning_trace(
     top_30_traces: List[dict],
@@ -482,12 +450,6 @@ def write_reasoning_trace(
         for trace in top_30_traces:
             f.write(json.dumps(trace, ensure_ascii=False) + "\n")
     logger.info("Reasoning trace written: %s (%d entries)", trace_path, len(top_30_traces))
-
-
-# ---------------------------------------------------------------------------
-# Pipeline function (importable for validate_pipeline.py integration)
-# ---------------------------------------------------------------------------
-
 def pipeline_fn(
     candidates: List[dict],
     jd_config,
@@ -504,19 +466,18 @@ def pipeline_fn(
     from features import build_feature_vector, FEATURE_COLUMNS, consistency_score
     from precompute import tokenize_candidate
 
-    # Build in-memory BM25 index
+                                
     corpus = [tokenize_candidate(c) for c in candidates]
     bm25 = BM25Okapi(corpus)
     cids = [c.get("candidate_id", f"IDX_{i}") for i, c in enumerate(candidates)]
 
-    # Run query
+               
     from retrieval import tokenize_query
     query_tokens = tokenize_query(jd_config.get_all_query_terms() + jd_config.production_keywords)
     raw_scores = bm25.get_scores(query_tokens)
     bm25_scores = {cids[i]: float(raw_scores[i]) for i in range(len(cids))}
     median_bm25 = float(np.median(list(bm25_scores.values())))
-
-    # Feature extraction
+      
     feature_rows = []
     for c in candidates:
         cid = c.get("candidate_id", "")
@@ -535,9 +496,7 @@ def pipeline_fn(
             except Exception:
                 row = [bs] + [0.0] * 21
 
-        feature_rows.append(row)
-
-    # Score = bm25 + sum of features (lightweight fallback when no LightGBM model)
+        feature_rows.append(row)                                                                     
     try:
         import pickle
         base = _PROJECT_ROOT
@@ -546,7 +505,7 @@ def pipeline_fn(
         X = np.array(feature_rows, dtype=np.float32)
         scores = model.predict(X)
     except Exception:
-        # Fallback: use BM25 scores directly
+                                            
         scores = np.array([bm25_scores.get(cid, 0.0) for cid in cids])
 
     ranked = sorted(
@@ -554,12 +513,6 @@ def pipeline_fn(
         key=lambda x: (-x[1], x[0])
     )
     return [cid for cid, _ in ranked]
-
-
-# ---------------------------------------------------------------------------
-# Main entry point
-# ---------------------------------------------------------------------------
-
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Redrob Candidate Ranking Pipeline",
@@ -582,8 +535,8 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    # Resolve paths — base_dir defaults to the PROJECT ROOT (parent of src/),
-    # not src/ itself, so that data/, precomputed/, and output/ are found.
+                                                                             
+                                                                          
     script_dir = _PROJECT_ROOT
     base_dir = os.path.abspath(args.base_dir) if args.base_dir else script_dir
     candidates_path = os.path.abspath(args.candidates)
@@ -598,18 +551,11 @@ def main() -> None:
     logger.info("Candidates: %s", candidates_path)
     logger.info("Output: %s", out_path)
     logger.info("Base dir: %s", base_dir)
-    logger.info("=" * 60)
-
-    # -----------------------------------------------------------------------
-    # Stage 0: Load precomputed artifacts
-    # -----------------------------------------------------------------------
+    logger.info("=" * 60)                                                                       
     t0 = time.time()
     bm25, candidate_ids, model, static_features = load_artifacts(precomputed_dir, logger)
-    logger.info("Stage 0 (load artifacts): %.2fs", time.time() - t0)
-
-    # -----------------------------------------------------------------------
-    # Stage 1: Dual-Pass BM25 Retrieval
-    # -----------------------------------------------------------------------
+    logger.info("Stage 0 (load artifacts): %.2fs", time.time() - t0)                         
+                                                                             
     t1 = time.time()
     from jd_parser import parse_jd
     from retrieval import run_dual_pass_retrieval
@@ -623,14 +569,8 @@ def main() -> None:
     logger.info(
         "Stage 1 (retrieval): %d candidates retrieved, median BM25=%.4f in %.2fs",
         len(stage1_ids), stage1_bm25_median, time.time() - t1
-    )
-
-    # -----------------------------------------------------------------------
-    # Stage 2: Load candidate records for Stage 1 set
-    # -----------------------------------------------------------------------
-    t2 = time.time()
-
-    # Fast path: use precomputed byte-offset index (seeks directly to each record)
+    )                                                                   
+    t2 = time.time()                                                                            
     offsets_path = os.path.join(precomputed_dir, "candidate_offsets.pkl")
     if os.path.isfile(offsets_path):
         with open(offsets_path, "rb") as f:
@@ -639,7 +579,7 @@ def main() -> None:
             candidates_path, stage1_ids, candidate_offsets, logger
         )
     else:
-        # Fallback: stream the full 487 MB file (legacy path)
+                                                             
         logger.info("Stage 2: offset index not found — streaming full JSONL (slow)")
         stage1_candidates, malformed_count = load_stage1_candidates(
             candidates_path, stage1_ids, logger
@@ -649,37 +589,26 @@ def main() -> None:
         "Stage 2 (load records): %d candidates loaded (%d malformed) in %.2f s",
         len(stage1_candidates), malformed_count, time.time() - t2
     )
-
-
-    # -----------------------------------------------------------------------
-    # Stage 2b: Feature extraction
-    # -----------------------------------------------------------------------
+                                                                     
     t2b = time.time()
     X, ordered_ids, consistency_map = extract_features_for_ranking(
         stage1_candidates, jd_config, bm25_scores, stage1_bm25_median, logger,
         static_features=static_features
     )
     logger.info("Stage 2b (features): %.2fs", time.time() - t2b)
-
-    # -----------------------------------------------------------------------
-    # Stage 4: LightGBM Inference + Consistency Multiplier
-    # -----------------------------------------------------------------------
+                                                                    
     t4 = time.time()
     lgbm_scores = run_lightgbm_inference(model, X, ordered_ids, logger)
     
-    # Apply post-inference consistency multiplier to suppress honeypots
+                                                                       
     for cid in lgbm_scores:
         lgbm_scores[cid] *= consistency_map.get(cid, 1.0)
         
-    logger.info("Stage 4 (LightGBM + multiplier): %.2fs", time.time() - t4)
-
-    # -----------------------------------------------------------------------
-    # Select top 100 and enforce monotonicity
-    # -----------------------------------------------------------------------
+    logger.info("Stage 4 (LightGBM + multiplier): %.2fs", time.time() - t4)                                                          
     t5 = time.time()
     ranked_top100 = sort_and_enforce_monotonicity(lgbm_scores, logger)
 
-    # Runtime assertion — before ANY CSV write
+                                              
     assert_monotonicity(ranked_top100)
     logger.info("Monotonicity assertion PASSED.")
 
@@ -688,14 +617,9 @@ def main() -> None:
     )
     logger.info("Count assertion PASSED: exactly 100 candidates.")
 
-    top100_ids = [cid for cid, _, _ in ranked_top100]
-
-    # -----------------------------------------------------------------------
-    # Build feature vector lookup for audits
-    # -----------------------------------------------------------------------
-    from features import build_feature_vector, FEATURE_COLUMNS
-
-    # Build candidate dict lookup
+    top100_ids = [cid for cid, _, _ in ranked_top100]                             
+                                                                             
+    from features import build_feature_vector, FEATURE_COLUMNS                        
     candidate_lookup: Dict[str, dict] = {
         c.get("candidate_id"): c for c in stage1_candidates
     }
@@ -716,20 +640,10 @@ def main() -> None:
             feature_vectors[cid] = {col: 0.0 for col in FEATURE_COLUMNS}
 
     top100_candidates = [candidate_lookup[cid] for cid in top100_ids if cid in candidate_lookup]
-
-    # -----------------------------------------------------------------------
-    # Section 8.1: Honeypot Audit (BLOCKING)
-    # -----------------------------------------------------------------------
-    run_honeypot_audit(top100_candidates, feature_vectors, logger)
-
-    # -----------------------------------------------------------------------
-    # Section 8.2: Diversity Audit (BLOCKING)
-    # -----------------------------------------------------------------------
-    run_diversity_audit(top100_candidates, feature_vectors, logger)
-
-    # -----------------------------------------------------------------------
-    # Stage 5: Reasoning Compilation
-    # -----------------------------------------------------------------------
+                                                
+    run_honeypot_audit(top100_candidates, feature_vectors, logger)                    
+                                                                             
+    run_diversity_audit(top100_candidates, feature_vectors, logger)                                                      
     t5r = time.time()
     from reasoning import ReasoningCompiler
 
@@ -752,15 +666,7 @@ def main() -> None:
             reasoning_texts[cid] = compiler.compile(c, fv, raw_lgbm, rank)
 
     logger.info("Stage 5 (reasoning): %.2fs", time.time() - t5r)
-
-    # -----------------------------------------------------------------------
-    # Write reasoning_trace.jsonl for top 30 (Section 8.3)
-    # -----------------------------------------------------------------------
-    write_reasoning_trace(reasoning_traces, base_dir, logger)
-
-    # -----------------------------------------------------------------------
-    # Assemble submission DataFrame
-    # -----------------------------------------------------------------------
+    write_reasoning_trace(reasoning_traces, base_dir, logger)                                              
     rows = []
     for cid, norm_score, rank in ranked_top100:
         rows.append({
@@ -770,28 +676,19 @@ def main() -> None:
             "reasoning": reasoning_texts.get(cid, ""),
         })
 
-    df = pd.DataFrame(rows, columns=["candidate_id", "rank", "score", "reasoning"])
-
-    # Final shape check
+    df = pd.DataFrame(rows, columns=["candidate_id", "rank", "score", "reasoning"])                    
     assert len(df) == 100, f"DataFrame has {len(df)} rows, expected 100"
     assert list(df.columns) == ["candidate_id", "rank", "score", "reasoning"], \
-        f"Unexpected columns: {list(df.columns)}"
-
-    # Final monotonicity check on DataFrame scores
+        f"Unexpected columns: {list(df.columns)}"                                              
     scores_arr = df["score"].values
     for i in range(1, len(scores_arr)):
         assert scores_arr[i] <= scores_arr[i-1] + 1e-9, (
             f"DataFrame monotonicity violation at row {i}: "
             f"{scores_arr[i-1]:.8f} -> {scores_arr[i]:.8f}"
         )
-    logger.info("Final DataFrame monotonicity assertion PASSED.")
-
-    # -----------------------------------------------------------------------
-    # Write submission.csv
-    # -----------------------------------------------------------------------
+    logger.info("Final DataFrame monotonicity assertion PASSED.")                                                                      
     df.to_csv(out_path, index=False, encoding="utf-8")
     logger.info("Submission CSV written: %s", out_path)
-
     wall_elapsed = time.time() - wall_start
     logger.info("=" * 60)
     logger.info("PIPELINE COMPLETE")
@@ -804,9 +701,7 @@ def main() -> None:
         logger.error(
             "TIMING VIOLATION: Pipeline took %.1fs > 300s limit", wall_elapsed
         )
-        sys.exit(4)
-
-    # Print submission head for quick verification
+        sys.exit(4)                                            
     print("\n--- submission.csv (first 5 rows) ---")
     print(df.head(5).to_string(index=False))
     print(f"\nTotal rows: {len(df)}")
