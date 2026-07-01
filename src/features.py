@@ -7,19 +7,10 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from jd_parser import JDConfig, hard_req_coverage_score
 
-# ---------------------------------------------------------------------------
-# Pinned reference date (Section 8.4 / Stage 3 Docker reproduction requirement)
-# This MUST be a constant — never datetime.now() or date.today()
-# ---------------------------------------------------------------------------
+
 REFERENCE_DATE = date(2026, 1, 1)
 
 
-# ---------------------------------------------------------------------------
-# Section 4.1 — The 5 Adversarial Functions
-# Each returns a float; each is independently testable.
-# ---------------------------------------------------------------------------
-
-# Taxonomy for domain-category mismatch detection
 _DOMAIN_TITLE_KEYWORDS: Dict[str, List[str]] = {
     "ai_ml": [
         "machine learning", "ml", "data scientist", "ai", "nlp",
@@ -171,13 +162,13 @@ def domain_category_mismatch(career_entry: dict) -> float:
     description = (career_entry.get("description") or "").strip()
 
     if not title or not description:
-        return 0.0  # Cannot determine mismatch without both fields
+        return 0.0 
 
     title_domain = _classify_text_domain(title, _DOMAIN_TITLE_KEYWORDS)
     desc_domain = _classify_text_domain(description, _DOMAIN_DESC_KEYWORDS)
 
     if title_domain is None or desc_domain is None:
-        return 0.0  # Ambiguous — no penalty
+        return 0.0 
 
     return 1.0 if title_domain != desc_domain else 0.0
 
@@ -205,7 +196,6 @@ def template_registry_match(description: str) -> float:
     for template, first_word in zip(_SYNTHETIC_TEMPLATES, _TEMPLATE_FIRST_WORDS):
         if template in desc_lower:
             return 1.0
-        # First-word pre-filter: skip SequenceMatcher if anchor word is absent
         if first_word not in desc_lower:
             continue
         ratio = difflib.SequenceMatcher(None, fragment, template, autojunk=False).ratio()
@@ -233,7 +223,7 @@ def prod_signal_log_score(description: str) -> float:
     academic_count = sum(1 for kw in _ACADEMIC_ONLY_KEYWORDS if kw in desc_lower)
 
     if prod_count == 0 and academic_count > 0:
-        return -1.0  # Pure academic — explicitly disqualifying
+        return -1.0  
 
     return math.log1p(prod_count)
 
@@ -265,7 +255,6 @@ def langchain_dabbler_score(skills: List[dict]) -> float:
         months = s.get("duration_months") or 0  # safe default if missing
         months = max(0, int(months))
 
-        # Use at least 1 month as fallback weight so count still matters
         weight = months if months > 0 else 1
 
         if any(pre in name for pre in _PRE_LLM_SKILLS):
@@ -277,7 +266,6 @@ def langchain_dabbler_score(skills: List[dict]) -> float:
     if total == 0:
         return 0.0
 
-    # Normalize: +1 = all pre-LLM, -1 = all LLM-era
     return (pre_llm_months - llm_era_months) / total
 
 
@@ -313,13 +301,9 @@ def cv_specialist_score(skills: List[dict]) -> float:
     if total == 0:
         return 0.0
 
-    # 1.0 = all CV/Speech, 0.0 = all IR
     return cv_months / total
 
 
-# ---------------------------------------------------------------------------
-# Section 4.2 — The Explicit 22-Feature Matrix
-# ---------------------------------------------------------------------------
 
 def _safe_date(date_str: Optional[str]) -> Optional[date]:
     """Parse date string safely; return None on any failure."""
@@ -408,7 +392,6 @@ def compute_param_b_availability(candidate: dict) -> float:
         recency_score = 0.0
     else:
         days_since = (REFERENCE_DATE - last_active).days
-        # Decay over 180 days; negative days (future dates) → 0
         days_since = max(0, days_since)
         recency_score = math.exp(-days_since / 180.0)
 
@@ -444,7 +427,6 @@ def compute_param_c_tenure(candidate: dict) -> float:
         return 0.0
 
     avg_months = sum(durations) / len(durations)
-    # Score: 0 at 0 months, 1.0 at >=36 months
     return min(1.0, avg_months / 36.0)
 
 
@@ -459,7 +441,7 @@ def compute_param_d_notice_exp(candidate: dict) -> float:
     signals = candidate.get("redrob_signals", {}) or {}
     days = signals.get("notice_period_days")
     if days is None:
-        return 1.0  # Unknown notice → assume immediate, no penalty
+        return 1.0  
     try:
         days = max(0, int(days))
     except (TypeError, ValueError):
@@ -490,7 +472,6 @@ def compute_param_e_credibility(candidate: dict) -> float:
     if not isinstance(assessments, dict):
         assessments = {}
 
-    # Normalize assessment keys to lowercase for matching
     assessed_keys = {k.lower().strip() for k in assessments.keys()}
 
     advanced_claimed = 0
@@ -505,8 +486,6 @@ def compute_param_e_credibility(candidate: dict) -> float:
             if name in assessed_keys:
                 assessed_advanced += 1
 
-    # advanced_claimed / max(1, assessed_count) — higher = less credible
-    # Cap at 5.0 to prevent unbounded outliers
     return min(5.0, advanced_claimed / max(1, assessed_advanced))
 
 
@@ -659,7 +638,7 @@ def compute_prod_signal_log(candidate: dict) -> float:
         return 0.0
 
     if total_prod_count == 0 and is_academic_only:
-        return -1.0  # Explicitly disqualifying per architecture spec
+        return -1.0  
 
     return math.log1p(total_prod_count)
 
@@ -715,7 +694,7 @@ def compute_flag_title_chaser(candidate: dict) -> float:
     if not career:
         return 0.0
 
-    # Find most recent role (is_current or last in list)
+  
     current_roles = [ch for ch in career if ch.get("is_current", False)]
     most_recent = current_roles[0] if current_roles else career[-1]
 
@@ -751,8 +730,7 @@ def compute_flag_langchain_dabbler(skills: List[dict]) -> float:
       - skills[].duration_months
     """
     score = langchain_dabbler_score(skills)
-    # score: +1.0 = strong pre-LLM (good), -1.0 = pure LLM-era (bad)
-    # Flag = 1 when pre-LLM is weak (score < -0.3)
+   
     return 1.0 if score < -0.3 else 0.0
 
 
@@ -766,7 +744,6 @@ def compute_flag_cv_specialist(skills: List[dict]) -> float:
       - skills[].duration_months
     """
     cv_score = cv_specialist_score(skills)
-    # > 0.7 = dominated by CV/speech
     return 1.0 if cv_score > 0.7 else 0.0
 
 
@@ -826,7 +803,6 @@ def build_feature_vector(
         Dict mapping feature name -> float value.
         All features are guaranteed finite floats (no NaN, no None).
     """
-    # Import here to avoid circular import — consistency module is in this file
     from features import (
         c1_timeline_impossibility, c2_signup_anomaly, c3_salary_inversion,
         c4_assessment_contradiction, c5_engagement_mismatch, consistency_score,
@@ -835,9 +811,6 @@ def build_feature_vector(
     profile = candidate.get("profile", {}) or {}
     skills = candidate.get("skills", []) or []
 
-    # -----------------------------------------------------------------------
-    # Compute all individual features
-    # -----------------------------------------------------------------------
     if precomputed_static is not None:
         yoe = float(precomputed_static.get("yoe", 0.0))
         hard_req = hard_req_coverage_score(candidate, jd_config)
@@ -891,57 +864,32 @@ def build_feature_vector(
 
     interaction_req_x_cons = hard_req * cons
 
-    # -----------------------------------------------------------------------
-    # Assemble exactly the 22-feature vector from Section 4.2
-    # -----------------------------------------------------------------------
+   
     fv = {
-        # 1
         "bm25_score": float(bm25_score),
-        # 2
         "yoe": float(yoe),
-        # 3
         "Param_A_Systems_Depth": float(param_a),
-        # 4
         "Param_B_Availability": float(param_b),
-        # 5
         "Param_C_Tenure": float(param_c),
-        # 6
         "Param_D_Notice_Exp": float(param_d),
-        # 7
         "Param_E_Credibility": float(param_e),
-        # 8
         "Param_F_Consulting": float(param_f),
-        # 9
         "Param_G_Location": float(param_g),
-        # 10
         "Param_H_GitHub": float(param_h),
-        # 11
         "title_ai_fraction": float(title_ai_frac),
-        # 12
         "prod_signal_log": float(prod_sig_log),
-        # 13
         "consistency_score": float(cons),
-        # 14
         "hard_req_coverage": float(hard_req),
-        # 15
         "flag_consulting_only": float(flag_consulting_only),
-        # 16
         "flag_title_chaser": float(flag_title_chaser),
-        # 17
         "flag_langchain_dabbler": float(flag_langchain),
-        # 18
         "flag_cv_specialist": float(flag_cv),
-        # 19
         "flag_title_desc_mismatch": float(flag_title_desc),
-        # 20
         "flag_template_desc": float(flag_template),
-        # 21
         "interaction_req_x_consistency": float(interaction_req_x_cons),
-        # 22
         "interaction_yoe_x_prod": float(interaction_yoe_x_prod),
     }
 
-    # Sanity check: all values must be finite floats
     for k, v in fv.items():
         if not math.isfinite(v):
             fv[k] = 0.0
@@ -950,12 +898,6 @@ def build_feature_vector(
     return fv
 
 
-# ---------------------------------------------------------------------------
-# Section 5 — Stage 3: Logical Consistency Checks (c1–c5)
-# Each function returns a float in [0, 1]:
-#   1.0 = check PASSES (no violation)
-#   0.0 = check FAILS (violation detected)
-# ---------------------------------------------------------------------------
 
 def c1_timeline_impossibility(candidate: dict) -> float:
     """
@@ -999,9 +941,8 @@ def c2_signup_anomaly(candidate: dict) -> float:
     last_active = _safe_date(signals.get("last_active_date"))
 
     if signup is None or last_active is None:
-        return 1.0  # Cannot determine — no penalty for missing data
+        return 1.0  
 
-    # signup AFTER last_active is anomalous
     if signup > last_active:
         return 0.0
 
@@ -1024,7 +965,7 @@ def c3_salary_inversion(candidate: dict) -> float:
     sal_max = salary.get("max")
 
     if sal_min is None or sal_max is None:
-        return 1.0  # Missing data — no penalty
+        return 1.0
 
     try:
         sal_min = float(sal_min)
@@ -1033,7 +974,7 @@ def c3_salary_inversion(candidate: dict) -> float:
         return 1.0
 
     if sal_min > sal_max:
-        return 0.0  # Inversion violation
+        return 0.0  
 
     return 1.0
 
@@ -1055,7 +996,6 @@ def c4_assessment_contradiction(candidate: dict) -> float:
     if not isinstance(assessments, dict):
         assessments = {}
 
-    # Normalize keys
     assessed = {k.lower().strip(): v for k, v in assessments.items()}
 
     for s in skills:
@@ -1067,7 +1007,7 @@ def c4_assessment_contradiction(candidate: dict) -> float:
             try:
                 score = float(score)
                 if score < 50.0:
-                    return 0.0  # Contradiction: claims advanced but scored < 50
+                    return 0.0
             except (TypeError, ValueError):
                 pass
 
@@ -1108,7 +1048,7 @@ def c5_engagement_mismatch(
     is_suspicious_engagement = (connections <= 60 and appearances <= 15 and endorsements <= 4)
 
     if is_high_bm25 and is_suspicious_engagement:
-        return 0.0  # Suspicious: high keyword match but low real engagement
+        return 0.0  
 
     return 1.0
 
@@ -1135,7 +1075,6 @@ def consistency_score(
     c4 = c4_assessment_contradiction(candidate)
     c5 = c5_engagement_mismatch(candidate, bm25_score, median_bm25)
 
-    # EXPLICIT MULTIPLICATION of all 5 checks — do not collapse or refactor
     result = c1 * c2 * c3 * c4 * c5
     return float(result)
 
@@ -1172,9 +1111,6 @@ FEATURE_COLUMNS = [
 ]
 
 
-# ---------------------------------------------------------------------------
-# Standalone tests for each adversarial function
-# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     import json
@@ -1182,19 +1118,19 @@ if __name__ == "__main__":
 
     print("=== Testing 5 Adversarial Functions ===\n")
 
-    # Test 1: domain_category_mismatch
+
     entry_ok = {"title": "Machine Learning Engineer", "description": "Built ranking models using neural networks and transformers."}
     entry_bad = {"title": "Customer Support", "description": "Conducted research on neural network architectures for image classification."}
     print(f"domain_category_mismatch (no mismatch): {domain_category_mismatch(entry_ok)}")
     print(f"domain_category_mismatch (mismatch):    {domain_category_mismatch(entry_bad)}")
 
-    # Test 2: template_registry_match
+
     desc_template = "I am a results-driven professional with experience in agile and scrum methodologies."
     desc_real = "Deployed a production BM25 ranking system serving 10M queries/day with p99 latency < 50ms."
     print(f"\ntemplate_registry_match (template):     {template_registry_match(desc_template)}")
     print(f"template_registry_match (real):         {template_registry_match(desc_real)}")
 
-    # Test 3: prod_signal_log_score
+   
     prod_desc = "Deployed model to production serving 1M users at scale with low latency."
     academic_desc = "University project on coursework for thesis on deep learning."
     empty_desc = ""
@@ -1202,7 +1138,6 @@ if __name__ == "__main__":
     print(f"prod_signal_log_score (academic):   {prod_signal_log_score(academic_desc):.4f}")
     print(f"prod_signal_log_score (empty):      {prod_signal_log_score(empty_desc):.4f}")
 
-    # Test 4: langchain_dabbler_score
     skills_pre_llm = [
         {"name": "BM25", "proficiency": "advanced", "endorsements": 10, "duration_months": 36},
         {"name": "XGBoost", "proficiency": "advanced", "endorsements": 8, "duration_months": 24},
@@ -1214,7 +1149,7 @@ if __name__ == "__main__":
     print(f"\nlangchain_dabbler_score (pre-LLM):  {langchain_dabbler_score(skills_pre_llm):.4f}")
     print(f"langchain_dabbler_score (LLM-only): {langchain_dabbler_score(skills_llm_only):.4f}")
 
-    # Test 5: cv_specialist_score
+    
     skills_cv = [
         {"name": "OpenCV", "proficiency": "advanced", "endorsements": 30, "duration_months": 36},
         {"name": "YOLO", "proficiency": "advanced", "endorsements": 20, "duration_months": 30},
@@ -1228,7 +1163,7 @@ if __name__ == "__main__":
 
     print("\n=== Testing Consistency Checks ===\n")
 
-    # Build a base candidate for testing
+
     base = {
         "candidate_id": "CAND_TEST001",
         "profile": {"years_of_experience": 5.0, "location": "Bangalore", "country": "India",
