@@ -14,7 +14,7 @@ team:
 submission:
   version: "1.0.0"
   timestamp: "2026-07-01"
-  output_file: "submission.csv"
+  output_file: "CTRL_COFFEE_REPEAT.csv"
 
 system:
   pipeline_type: "Offline-Indexed Lexical Retrieval + LightGBM LambdaRank"
