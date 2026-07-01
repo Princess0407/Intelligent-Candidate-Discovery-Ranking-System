@@ -17,15 +17,15 @@ Required?
 Description
 candidate_id
 string
-✅ Yes
+Yes
 The CAND_XXXXXXX ID from candidates.jsonl
 rank
 int (1-100)
-✅ Yes
+Yes
 The rank position. Must use each integer 1 through 100 exactly once.
 score
 float
-✅ Yes
+Yes
 Your model's score for this candidate. Should be monotonically non-increasing as rank increases.
 reasoning
 string
@@ -163,31 +163,31 @@ Field
 Required?
 Notes
 Team name
-✅ Yes
+Yes
 Used in leaderboard and result announcements
 Primary contact name
-✅ Yes
+Yes
 One person to act as your team's point of contact
 Primary contact email
-✅ Yes
+Yes
 Used for all organizer communication
 Primary contact phone
-✅ Yes
+Yes
 Used for top-N / top-X communication
 GitHub repository URL
-✅ Yes
+Yes
 Must be reachable. Private repos OK if you can grant access to organizers at Stage 3. Format: https://github.com/USERNAME/REPO
 Sandbox / demo link
-✅ Yes
+Yes
 A working hosted environment where your ranking system can be run. See Section 10.5 below.
 AI tools declared
-✅ Yes
+Yes
 Multi-select: Claude / ChatGPT / Copilot / Cursor / Gemini / Other / None. Honest declaration, not penalized.
 Compute environment summary
-✅ Yes
+Yes
 One line describing where you ran your code (e.g., "MacBook Pro M2, 16GB RAM, Python 3.11")
 Team member list
-✅ Yes
+Yes
 Name + email for each member
 Methodology summary
 Optional
