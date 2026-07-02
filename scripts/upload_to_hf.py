@@ -1,6 +1,6 @@
 import argparse
 import os
-from huggingface_hub import upload_folder
+from huggingface_hub import upload_folder, create_repo
 
 def main():
     parser = argparse.ArgumentParser(description="Upload project to Hugging Face Hub cleanly without virtual environment files")
@@ -34,6 +34,12 @@ def main():
         "diagnostics/**",
         "_tmp_*",
     ]
+
+    print(f"Checking/creating Hugging Face {args.type} repo: '{args.repo}'...")
+    try:
+        create_repo(repo_id=args.repo, repo_type=args.type, exist_ok=True)
+    except Exception as e:
+        print(f"Note on create_repo: {e}")
 
     print(f"Starting clean upload of '{project_root}' to Hugging Face {args.type}: '{args.repo}'...")
     print("Ignoring .venv, .git, logs, and large local datasets...")

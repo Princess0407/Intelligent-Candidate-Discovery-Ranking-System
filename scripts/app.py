@@ -20,7 +20,7 @@ st.set_page_config(
 _SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))       
 _PROJECT_ROOT = os.path.dirname(_SCRIPTS_DIR)                    
 _SRC_DIR = os.path.join(_PROJECT_ROOT, "src")
-for _p in [_SRC_DIR, _PROJECT_ROOT]:
+for _p in [_SRC_DIR, _SCRIPTS_DIR, _PROJECT_ROOT]:
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
